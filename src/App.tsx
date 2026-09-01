@@ -367,11 +367,13 @@ export default function App() {
   const attemptInitialSync = async (
     onSettled: (success: boolean, hadLocalData: boolean) => void
   ) => {
+    // 1. Buka aplikasi SEKETIKA pakai cache lokal (kalau ada). Jangan
+    // tahan layar login di belakang proses sinkron cloud -- itulah yang
+    // dulu bikin tutor "menghubungkan terus" padahal cuma menunggu.
     let currentDb: Database;
 
     try {
       currentDb = ensureDatabaseDefaults(getDatabase());
-      setDb(currentDb);
     } catch (error) {
       console.error("Gagal memuat cache lokal:", error);
       currentDb = ensureDatabaseDefaults({} as Database);
@@ -379,6 +381,14 @@ export default function App() {
 
     const hadLocalData = !isEmptyDatabase(currentDb);
 
+    setDb(currentDb);
+    setIsInitialLoading(false);
+
+    // 2. Tarik data terbaru dari Spreadsheet DI BELAKANG LAYAR, dengan
+    // retry (Google Apps Script kadang butuh beberapa detik untuk
+    // "bangun" di request pertama). Selama proses ini, layar login
+    // tetap bisa dipakai -- kalau data tutor belum lengkap, pesan error
+    // di handleLoginSubmit yang akan menjelaskan, bukan layar buntu.
     let success = false;
 
     for (
@@ -420,16 +430,17 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
-    attemptInitialSync((success, hadLocalData) => {
+    // initialSyncFailed di sini artinya "belum pernah berhasil sinkron
+    // ke cloud sejak app dibuka" -- dipakai untuk banner kecil di layar
+    // login (lihat renderLoginSyncBanner), BUKAN untuk memblokir layar.
+    setInitialSyncFailed(true);
+
+    attemptInitialSync((success) => {
       if (cancelled) return;
 
-      // Device baru (tidak ada cache) & semua percobaan gagal
-      // -> tahan di layar "gagal terhubung", jangan lempar ke login.
-      if (!success && !hadLocalData) {
-        setInitialSyncFailed(true);
+      if (success) {
+        setInitialSyncFailed(false);
       }
-
-      setIsInitialLoading(false);
     });
 
     return () => {
@@ -632,12 +643,11 @@ export default function App() {
       }
     }
 
-    if (
-      (db.tutors || []).length === 0 &&
-      syncState.status === "error"
-    ) {
+    if ((db.tutors || []).length === 0) {
+      // Daftar tutor masih kosong -> tidak mungkin ada password tutor
+      // yang cocok. Ini masalah data belum sinkron, bukan salah password.
       alert(
-        "Data belum berhasil disinkronkan dari Google Spreadsheet. Periksa koneksi internet Anda, lalu tekan tombol refresh dan coba login lagi."
+        "Data akun Tutor belum selesai dimuat dari Google Spreadsheet. Mohon tunggu beberapa detik lalu coba lagi, atau tekan tombol \"Coba sambungkan ulang\" di layar login."
       );
       return;
     }
@@ -1209,51 +1219,6 @@ export default function App() {
   }
 
   /* =========================================================
-     GAGAL TERHUBUNG (device baru, semua percobaan sinkron gagal)
-  ========================================================= */
-
-  if (initialSyncFailed) {
-    return (
-      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-center text-white font-sans">
-        <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center mb-4">
-          <AlertCircle
-            size={26}
-            className="text-rose-400"
-          />
-        </div>
-
-        <h3 className="text-base font-extrabold tracking-wide font-display text-white mb-2">
-          Belum Bisa Terhubung ke Server
-        </h3>
-
-        <p className="text-xs text-slate-400 font-medium max-w-xs leading-relaxed mb-6">
-          Perangkat ini belum pernah menyimpan data sebelumnya, dan
-          percobaan menyambungkan ke Google Spreadsheet belum berhasil.
-          Periksa koneksi internet Anda, lalu coba lagi.
-        </p>
-
-        <button
-          onClick={handleRetryInitialSync}
-          disabled={isRetryingInitialSync}
-          className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white px-5 py-2.5 rounded-xl font-bold text-xs cursor-pointer transition-all active:scale-95"
-        >
-          <RefreshCw
-            size={14}
-            className={
-              isRetryingInitialSync
-                ? "animate-spin"
-                : ""
-            }
-          />
-          {isRetryingInitialSync
-            ? "Menyambungkan..."
-            : "Coba Lagi"}
-        </button>
-      </div>
-    );
-  }
-
-  /* =========================================================
      MAIN UI
   ========================================================= */
 
@@ -1378,6 +1343,41 @@ export default function App() {
                     Belajar
                   </p>
                 </div>
+
+                {initialSyncFailed && (
+                  <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5">
+                    <RefreshCw
+                      size={15}
+                      className="text-amber-500 shrink-0 mt-0.5 animate-spin"
+                    />
+
+                    <div className="flex-1 text-left">
+                      <p className="text-[11px] text-amber-800 font-semibold leading-relaxed">
+                        Data sedang dipersiapkan
+                        mohon tunggu sebentar sebelum login.
+                      </p>
+
+                      <button
+                        type="button"
+                        onClick={handleRetryInitialSync}
+                        disabled={isRetryingInitialSync}
+                        className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-amber-700 hover:text-amber-900 disabled:opacity-60 cursor-pointer transition-all"
+                      >
+                        <RefreshCw
+                          size={12}
+                          className={
+                            isRetryingInitialSync
+                              ? "animate-spin"
+                              : ""
+                          }
+                        />
+                        {isRetryingInitialSync
+                          ? "Menyambungkan..."
+                          : "Coba sambungkan ulang"}
+                      </button>
+                    </div>
+                  </div>
+                )}
 
                 {isRegisterOpen ? (
                   <div>
