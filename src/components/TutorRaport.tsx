@@ -92,7 +92,7 @@ export default function TutorRaport({
     }, 3500);
   };
 
-  // Sync to Cloud function (Google Spreadsheet App Script)
+  // Sync to Cloud function (Firebase App Script)
   const syncToCloud = async (payload: any) => {
     try {
       await fetch(WEB_APP_URL, {

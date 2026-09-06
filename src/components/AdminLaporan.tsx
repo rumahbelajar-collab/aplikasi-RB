@@ -235,7 +235,7 @@ export default function AdminLaporan({ db, onUpdateDb, defaultMainTab = "pdf" }:
     const comment = adminComments[reportId]?.trim() || "";
     const nextDb = verifyAttendanceReport(db, reportId, status, comment, getTodayDateString());
     
-    // onUpdateDb akan otomatis melakukan push ke Google Spreadsheet secara background & sync realtime
+    // onUpdateDb akan otomatis melakukan push ke Firebase secara background & sync realtime
     onUpdateDb(nextDb);
 
     setAdminComments(prev => {
@@ -640,16 +640,15 @@ export default function AdminLaporan({ db, onUpdateDb, defaultMainTab = "pdf" }:
                 {item.fotoJurnal && (
                   <div className="flex items-center gap-2 pt-1">
                     <span className="text-[9px] font-bold text-slate-400 uppercase shrink-0">Bukti Jurnal:</span>
-                    <div className="relative w-16 h-12 rounded overflow-hidden border border-slate-200 shrink-0 group">
-                      <img src={item.fotoJurnal} alt="Jurnal" className="w-full h-full object-cover" />
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPhoto(item.fotoJurnal as string)}
-                        className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[8px] font-bold cursor-pointer"
-                      >
-                        Lihat
-                      </button>
-                    </div>
+                    <a
+                      href={item.fotoJurnal}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-brand-50 text-brand-700 text-[9.5px] font-bold hover:bg-brand-100 transition-colors"
+                    >
+                      <Eye size={12} />
+                      Lihat Foto
+                    </a>
                   </div>
                 )}
 
@@ -803,21 +802,15 @@ export default function AdminLaporan({ db, onUpdateDb, defaultMainTab = "pdf" }:
                   {claim.fotoJurnal && (
                     <div>
                       <span className="font-bold text-slate-400 uppercase text-[9px] block mb-1">Foto Bukti Jurnal Pembelajaran</span>
-                      <div className="relative w-32 h-24 rounded-lg overflow-hidden border border-slate-200 shadow-3xs group">
-                        <img 
-                          src={claim.fotoJurnal} 
-                          alt="Foto Bukti Jurnal" 
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform" 
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setSelectedPhoto(claim.fotoJurnal as string)}
-                          className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold gap-1 cursor-pointer"
-                        >
-                          <Eye size={12} />
-                          Lihat Besar
-                        </button>
-                      </div>
+                      <a
+                        href={claim.fotoJurnal}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-brand-50 text-brand-700 text-[11px] font-bold hover:bg-brand-100 transition-colors"
+                      >
+                        <Eye size={14} />
+                        Buka Foto Bukti Jurnal
+                      </a>
                     </div>
                   )}
 
@@ -940,7 +933,7 @@ export default function AdminLaporan({ db, onUpdateDb, defaultMainTab = "pdf" }:
           className="fixed inset-0 bg-slate-900/90 backdrop-blur-xs flex items-center justify-center p-4 z-55 animate-fade-in"
         >
           <div className="relative max-w-full max-h-[85vh] rounded-2xl overflow-hidden bg-slate-950 shadow-2xl flex flex-col items-center">
-            <img src={selectedPhoto} alt="Zoom Jurnal" className="max-w-full max-h-[80vh] object-contain" />
+            <img src={selectedPhoto} alt="Zoom Jurnal" referrerPolicy="no-referrer" className="max-w-full max-h-[80vh] object-contain" />
             <p className="text-white text-xs py-2 text-center">Klik di luar untuk menutup</p>
           </div>
         </div>

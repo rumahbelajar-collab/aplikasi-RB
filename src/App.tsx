@@ -39,7 +39,7 @@ import {
   subscribeToDatabaseChanges,
   isEmptyDatabase,
   type SyncState,
-} from "./lib/googleSheets";
+} from "./lib/firebaseSync";
 
 // Admin Submodules
 import AdminDashboard from "./components/AdminDashboard";
@@ -305,7 +305,7 @@ export default function App() {
     useState(true);
 
   // true kalau ini device/browser BARU (belum ada cache sama sekali) dan
-  // SEMUA percobaan sinkron awal ke Google Spreadsheet gagal. Dalam kondisi
+  // SEMUA percobaan sinkron awal ke Firebase gagal. Dalam kondisi
   // ini kita SENGAJA tidak melempar user ke layar login, karena kalau
   // dibiarkan, tutor akan melihat daftar akun kosong dan dikira
   // "password salah" padahal sebenarnya cuma belum berhasil tersambung.
@@ -367,13 +367,11 @@ export default function App() {
   const attemptInitialSync = async (
     onSettled: (success: boolean, hadLocalData: boolean) => void
   ) => {
-    // 1. Buka aplikasi SEKETIKA pakai cache lokal (kalau ada). Jangan
-    // tahan layar login di belakang proses sinkron cloud -- itulah yang
-    // dulu bikin tutor "menghubungkan terus" padahal cuma menunggu.
     let currentDb: Database;
 
     try {
       currentDb = ensureDatabaseDefaults(getDatabase());
+      setDb(currentDb);
     } catch (error) {
       console.error("Gagal memuat cache lokal:", error);
       currentDb = ensureDatabaseDefaults({} as Database);
@@ -381,14 +379,6 @@ export default function App() {
 
     const hadLocalData = !isEmptyDatabase(currentDb);
 
-    setDb(currentDb);
-    setIsInitialLoading(false);
-
-    // 2. Tarik data terbaru dari Spreadsheet DI BELAKANG LAYAR, dengan
-    // retry (Google Apps Script kadang butuh beberapa detik untuk
-    // "bangun" di request pertama). Selama proses ini, layar login
-    // tetap bisa dipakai -- kalau data tutor belum lengkap, pesan error
-    // di handleLoginSubmit yang akan menjelaskan, bukan layar buntu.
     let success = false;
 
     for (
@@ -416,7 +406,7 @@ export default function App() {
         }
       } catch (error) {
         console.error(
-          `Gagal mengambil database dari Google Spreadsheet (percobaan ${
+          `Gagal mengambil database dari Firebase (percobaan ${
             attempt + 1
           }/${INITIAL_SYNC_RETRY_DELAYS_MS.length}):`,
           error
@@ -430,17 +420,16 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
 
-    // initialSyncFailed di sini artinya "belum pernah berhasil sinkron
-    // ke cloud sejak app dibuka" -- dipakai untuk banner kecil di layar
-    // login (lihat renderLoginSyncBanner), BUKAN untuk memblokir layar.
-    setInitialSyncFailed(true);
-
-    attemptInitialSync((success) => {
+    attemptInitialSync((success, hadLocalData) => {
       if (cancelled) return;
 
-      if (success) {
-        setInitialSyncFailed(false);
+      // Device baru (tidak ada cache) & semua percobaan gagal
+      // -> tahan di layar "gagal terhubung", jangan lempar ke login.
+      if (!success && !hadLocalData) {
+        setInitialSyncFailed(true);
       }
+
+      setIsInitialLoading(false);
     });
 
     return () => {
@@ -458,7 +447,7 @@ export default function App() {
         setInitialSyncFailed(false);
       } else {
         showToast(
-          "Masih belum bisa terhubung ke Google Spreadsheet. Periksa koneksi internet Anda.",
+          "Masih belum bisa terhubung ke Firebase. Periksa koneksi internet Anda.",
           "error"
         );
       }
@@ -510,13 +499,13 @@ export default function App() {
       );
     }
 
-    // Google Spreadsheet = sumber utama.
+    // Firebase = sumber utama.
     // Kirim perubahan ke cloud di background.
     pushToGoogleSheets(sanitized)
       .then((result) => {
         if (!result.success) {
           showToast(
-            "Perubahan tersimpan lokal, tapi gagal disinkronkan ke Google Spreadsheet.",
+            "Perubahan tersimpan lokal, tapi gagal disinkronkan ke Firebase.",
             "error"
           );
           return;
@@ -530,12 +519,12 @@ export default function App() {
       })
       .catch((error) => {
         console.error(
-          "Gagal mengirim database ke Google Spreadsheet:",
+          "Gagal mengirim database ke Firebase:",
           error
         );
 
         showToast(
-          "Perubahan tersimpan lokal, tapi gagal disinkronkan ke Google Spreadsheet.",
+          "Perubahan tersimpan lokal, tapi gagal disinkronkan ke Firebase.",
           "error"
         );
       });
@@ -553,7 +542,7 @@ export default function App() {
 
         if (!cloudDb) {
           showToast(
-            "Google Spreadsheet tidak dapat diakses. Menampilkan data cache.",
+            "Firebase tidak dapat diakses. Menampilkan data cache.",
             "error"
           );
           return;
@@ -566,7 +555,7 @@ export default function App() {
         saveDatabase(normalized);
 
         showToast(
-          "Data berhasil diperbarui dari Google Spreadsheet.",
+          "Data berhasil diperbarui dari Firebase.",
           "success"
         );
       } catch (error) {
@@ -643,11 +632,12 @@ export default function App() {
       }
     }
 
-    if ((db.tutors || []).length === 0) {
-      // Daftar tutor masih kosong -> tidak mungkin ada password tutor
-      // yang cocok. Ini masalah data belum sinkron, bukan salah password.
+    if (
+      (db.tutors || []).length === 0 &&
+      syncState.status === "error"
+    ) {
       alert(
-        "Data akun Tutor belum selesai dimuat dari Google Spreadsheet. Mohon tunggu beberapa detik lalu coba lagi, atau tekan tombol \"Coba sambungkan ulang\" di layar login."
+        "Data belum berhasil disinkronkan dari Firebase. Periksa koneksi internet Anda, lalu tekan tombol refresh dan coba login lagi."
       );
       return;
     }
@@ -1219,6 +1209,51 @@ export default function App() {
   }
 
   /* =========================================================
+     GAGAL TERHUBUNG (device baru, semua percobaan sinkron gagal)
+  ========================================================= */
+
+  if (initialSyncFailed) {
+    return (
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-center text-white font-sans">
+        <div className="w-14 h-14 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center mb-4">
+          <AlertCircle
+            size={26}
+            className="text-rose-400"
+          />
+        </div>
+
+        <h3 className="text-base font-extrabold tracking-wide font-display text-white mb-2">
+          Belum Bisa Terhubung ke Server
+        </h3>
+
+        <p className="text-xs text-slate-400 font-medium max-w-xs leading-relaxed mb-6">
+          Perangkat ini belum pernah menyimpan data sebelumnya, dan
+          percobaan menyambungkan ke Firebase belum berhasil.
+          Periksa koneksi internet Anda, lalu coba lagi.
+        </p>
+
+        <button
+          onClick={handleRetryInitialSync}
+          disabled={isRetryingInitialSync}
+          className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white px-5 py-2.5 rounded-xl font-bold text-xs cursor-pointer transition-all active:scale-95"
+        >
+          <RefreshCw
+            size={14}
+            className={
+              isRetryingInitialSync
+                ? "animate-spin"
+                : ""
+            }
+          />
+          {isRetryingInitialSync
+            ? "Menyambungkan..."
+            : "Coba Lagi"}
+        </button>
+      </div>
+    );
+  }
+
+  /* =========================================================
      MAIN UI
   ========================================================= */
 
@@ -1343,41 +1378,6 @@ export default function App() {
                     Belajar
                   </p>
                 </div>
-
-                {initialSyncFailed && (
-                  <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-xl p-3 mb-5">
-                    <RefreshCw
-                      size={15}
-                      className="text-amber-500 shrink-0 mt-0.5 animate-spin"
-                    />
-
-                    <div className="flex-1 text-left">
-                      <p className="text-[11px] text-amber-800 font-semibold leading-relaxed">
-                        Data sedang dipersiapkan
-                        mohon tunggu sebentar sebelum login.
-                      </p>
-
-                      <button
-                        type="button"
-                        onClick={handleRetryInitialSync}
-                        disabled={isRetryingInitialSync}
-                        className="mt-2 flex items-center gap-1.5 text-[11px] font-bold text-amber-700 hover:text-amber-900 disabled:opacity-60 cursor-pointer transition-all"
-                      >
-                        <RefreshCw
-                          size={12}
-                          className={
-                            isRetryingInitialSync
-                              ? "animate-spin"
-                              : ""
-                          }
-                        />
-                        {isRetryingInitialSync
-                          ? "Menyambungkan..."
-                          : "Coba sambungkan ulang"}
-                      </button>
-                    </div>
-                  </div>
-                )}
 
                 {isRegisterOpen ? (
                   <div>
@@ -1701,7 +1701,7 @@ export default function App() {
 
               {/* HEADER */}
 
-              <div className="bg-white/80 backdrop-blur-md border-b border-slate-100 px-4 py-2.5 flex items-center justify-between sticky top-0 z-40 shrink-0 gap-2">
+              <div className="bg-blue-500 backdrop-blur-md border-b border-blue-500 px-4 py-2.5 flex items-center justify-between sticky top-0 z-40 shrink-0 gap-2">
                 <div className="flex items-center gap-2 shrink-0">
                   <div
                     className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border ${
@@ -1743,7 +1743,7 @@ export default function App() {
                         ? "Gagal sinkron"
                         : syncState.status === "syncing"
                         ? "Menyinkronkan..."
-                        : "Spreadsheet tersinkron"}
+                        : "Tersinkron"}
                     </span>
                   </div>
 
@@ -1751,8 +1751,8 @@ export default function App() {
                     onClick={
                       handleRetryCloudSync
                     }
-                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors cursor-pointer"
-                    title="Refresh data dari Google Spreadsheet"
+                    className="p-1.5 rounded-lg hover:bg-slate-100 text-white transition-colors cursor-pointer"
+                    title="Refresh data dari Firebase"
                   >
                     <RefreshCw
                       size={14}
@@ -1766,7 +1766,7 @@ export default function App() {
                     onClick={
                       handleLogout
                     }
-                    className="flex items-center gap-1 text-[10.5px] font-black text-rose-600 bg-rose-50 px-2.5 py-1.5 rounded-lg border border-rose-100 hover:bg-rose-100 transition-colors cursor-pointer"
+                    className="flex items-center gap-1 text-[10.5px] font-black text-white bg-blue-500 px-2.5 py-1.5 rounded-lg hover:bg-blue-600 transition-colors cursor-pointer"
                   >
                     <LogOut
                       size={11}

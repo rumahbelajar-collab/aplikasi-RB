@@ -17,6 +17,7 @@ import {
   getTodayDateString
 } from "../lib/db";
 import CustomDatePicker from "./CustomDatePicker";
+import { compressImage, uploadFotoToDrive } from "../lib/driveUpload";
 
 // Mock journal photo templates to simulate file upload instantly
 const SAMPLE_JOURNALS = [
@@ -35,8 +36,15 @@ export default function TutorLaporan({ db, tutorId, onUpdateDb }: TutorLaporanPr
   const [programId, setProgramId] = useState("");
   const [tanggal, setTanggal] = useState(getTodayDateString());
   const [keterangan, setKeterangan] = useState("");
+  // fotoPreview: untuk ditampilkan di layar tutor (bisa base64 lokal
+  //   sebelum upload selesai, supaya terasa instan).
+  // fotoJurnal: link Google Drive HASIL upload -- ini yang disimpan
+  //   ke database, BUKAN base64.
+  const [fotoPreview, setFotoPreview] = useState("");
   const [fotoJurnal, setFotoJurnal] = useState("");
   const [fotoName, setFotoName] = useState("");
+  const [fotoUploading, setFotoUploading] = useState(false);
+  const [fotoError, setFotoError] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const [successMsg, setSuccessMsg] = useState("");
   
@@ -50,19 +58,37 @@ export default function TutorLaporan({ db, tutorId, onUpdateDb }: TutorLaporanPr
     .filter(r => r.tutorId === tutorId)
     .sort((a, b) => b.tanggal.localeCompare(a.tanggal) || b.id.localeCompare(a.id));
 
-  // Handle file reading
-  const processFile = (file: File) => {
+  // Handle file reading: kompres foto, tampilkan preview instan,
+  // lalu unggah ke Google Drive di belakang layar. Field fotoJurnal
+  // (link Drive) baru terisi setelah upload benar-benar selesai.
+  const processFile = async (file: File) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       alert("Harap unggah file gambar (PNG, JPG, JPEG).");
       return;
     }
+
+    setFotoError("");
+    setFotoJurnal("");
     setFotoName(file.name);
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      setFotoJurnal(reader.result as string);
-    };
-    reader.readAsDataURL(file);
+    setFotoUploading(true);
+
+    try {
+      const compressed = await compressImage(file);
+      // Tampilkan preview lokal dulu supaya tutor langsung lihat hasilnya.
+      setFotoPreview(compressed.base64);
+
+      const url = await uploadFotoToDrive(compressed);
+      setFotoJurnal(url);
+    } catch (error: any) {
+      setFotoError(
+        error?.message || "Gagal memproses/mengunggah foto. Coba lagi."
+      );
+      setFotoPreview("");
+      setFotoName("");
+    } finally {
+      setFotoUploading(false);
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -91,9 +117,13 @@ export default function TutorLaporan({ db, tutorId, onUpdateDb }: TutorLaporanPr
     }
   };
 
-  // Simulation handler
+  // Simulation handler -- ini sudah berupa URL foto yang sudah ada,
+  // jadi tidak perlu dikompres/diunggah lagi.
   const selectSampleJournal = (idx: number) => {
     const sample = SAMPLE_JOURNALS[idx];
+    setFotoError("");
+    setFotoUploading(false);
+    setFotoPreview(sample.url);
     setFotoJurnal(sample.url);
     setFotoName(sample.name);
   };
@@ -101,8 +131,18 @@ export default function TutorLaporan({ db, tutorId, onUpdateDb }: TutorLaporanPr
   // Submit report
   const handleSubmitReport = (e: React.FormEvent) => {
     e.preventDefault();
+
+    if (fotoUploading) {
+      alert("Foto masih diunggah, mohon tunggu sebentar lalu coba lagi.");
+      return;
+    }
+
     if (!siswaId || !programId || !fotoJurnal) {
-      alert("Harap lengkapi seluruh field dan unggah foto jurnal.");
+      alert(
+        fotoError
+          ? "Foto gagal diunggah. Silakan unggah ulang foto jurnal."
+          : "Harap lengkapi seluruh field dan unggah foto jurnal."
+      );
       return;
     }
 
@@ -122,7 +162,9 @@ export default function TutorLaporan({ db, tutorId, onUpdateDb }: TutorLaporanPr
     setProgramId("");
     setKeterangan("");
     setFotoJurnal("");
+    setFotoPreview("");
     setFotoName("");
+    setFotoError("");
     setSuccessMsg("Laporan kehadiran berhasil diajukan! Menunggu verifikasi oleh Administrator.");
     
     setTimeout(() => {
@@ -223,23 +265,33 @@ export default function TutorLaporan({ db, tutorId, onUpdateDb }: TutorLaporanPr
                 className="hidden"
               />
 
-              {fotoJurnal ? (
+              {fotoPreview ? (
                 <div className="space-y-2 w-full flex flex-col items-center">
                   <div className="relative w-24 h-20 rounded-lg overflow-hidden border border-slate-200 shadow-3xs">
-                    <img src={fotoJurnal} alt="Preview Jurnal" className="w-full h-full object-cover" />
+                    <img src={fotoPreview} alt="Preview Jurnal" className="w-full h-full object-cover" />
+                    {fotoUploading && (
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                        <span className="text-white text-[9px] font-bold">Mengunggah...</span>
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setFotoJurnal("");
+                        setFotoPreview("");
                         setFotoName("");
+                        setFotoError("");
                       }}
                       className="absolute top-0.5 right-0.5 p-0.5 bg-rose-500 text-white rounded-full hover:bg-rose-600 active:scale-90 transition-transform"
                     >
                       <X size={12} />
-                    </button>z
+                    </button>
                   </div>
                   <p className="text-[10px] font-bold text-slate-600 truncate max-w-[200px]">{fotoName}</p>
+                  {fotoUploading && (
+                    <p className="text-[9px] text-brand-600 font-bold">Sedang mengunggah ke penyimpanan...</p>
+                  )}
                 </div>
               ) : (
                 <>
@@ -249,7 +301,9 @@ export default function TutorLaporan({ db, tutorId, onUpdateDb }: TutorLaporanPr
                 </>
               )}
             </div>
-            
+            {fotoError && (
+              <p className="text-[10px] text-rose-500 font-bold mt-1">{fotoError}</p>
+            )}
           </div>
 
           <div>
