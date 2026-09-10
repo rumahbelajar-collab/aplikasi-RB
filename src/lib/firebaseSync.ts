@@ -140,6 +140,24 @@ function getDatabaseDocRef() {
 }
 
 /* =========================================================
+   BERSIHKAN NILAI `undefined` SEBELUM DIKIRIM KE FIRESTORE
+
+   Firestore menolak field bernilai `undefined` (beda dengan
+   `null`). Beberapa record di aplikasi ini (mis. pembayaran
+   siswa via "titipan tutor") sengaja menyimpan properti
+   seperti `tanggalSerah: undefined` atau `tutorId: undefined`
+   tergantung kondisinya. Kalau ini lolos ke setDoc(), SELURUH
+   penyimpanan ke Firebase gagal, bukan cuma satu record saja.
+
+   JSON.stringify secara alami membuang key yang nilainya
+   `undefined`, jadi cara paling aman & menyeluruh adalah
+   round-trip lewat JSON sebelum dikirim.
+========================================================= */
+function stripUndefinedDeep<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value));
+}
+
+/* =========================================================
    BACA DATABASE DARI CLOUD (sekali ambil)
 ========================================================= */
 
@@ -235,7 +253,9 @@ async function performPush(
       ensureDatabaseDefaults(localDb)
     );
 
-    await setDoc(getDatabaseDocRef(), normalized);
+    const payload = stripUndefinedDeep(normalized);
+
+    await setDoc(getDatabaseDocRef(), payload);
 
     saveLocalCache(normalized);
 

@@ -1,6 +1,6 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import {
-  getFirestore,
+  initializeFirestore,
   type Firestore,
 } from "firebase/firestore";
 import {
@@ -62,7 +62,18 @@ function ensureApp(): FirebaseApp {
 
 export function getFirestoreDb(): Firestore {
   if (!db) {
-    db = getFirestore(ensureApp());
+    // PENTING: ignoreUndefinedProperties:true wajib ada.
+    // Tanpa ini, setiap data yang punya field bernilai
+    // `undefined` (contoh: payment titipan tutor yang tidak
+    // punya tanggalSerah, atau payment admin yang tidak
+    // punya tutorId/tutorNama) akan membuat SELURUH proses
+    // simpan ke Firestore gagal total dengan error
+    // "Unsupported field value: undefined". Ini penyebab
+    // titipan tutor tidak pernah benar-benar tersimpan ke
+    // Firebase sebelumnya.
+    db = initializeFirestore(ensureApp(), {
+      ignoreUndefinedProperties: true,
+    });
   }
 
   return db;
