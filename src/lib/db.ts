@@ -127,12 +127,10 @@ const BULAN_INDO = [
 ========================================================= */
 
 export function generateUniqueId(prefix: string): string {
-  const random = Math.random()
-    .toString(36)
-    .slice(2, 7)
-    .toUpperCase();
+  // Menghasilkan 5 digit angka acak (10000 s/d 99999) untuk SEMUA jenis ID
+  const digits = Math.floor(10000 + Math.random() * 90000);
 
-  return `${prefix}-${random}`;
+  return `${prefix}-${digits}`;
 }
 
 /* =========================================================

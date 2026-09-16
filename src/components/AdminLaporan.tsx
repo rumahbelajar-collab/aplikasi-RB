@@ -233,8 +233,15 @@ export default function AdminLaporan({ db, onUpdateDb, defaultMainTab = "pdf" }:
 
   const executeVerify = (reportId: string, status: "setuju" | "tolak") => {
     const comment = adminComments[reportId]?.trim() || "";
-    const nextDb = verifyAttendanceReport(db, reportId, status, comment, getTodayDateString());
-    
+
+    let nextDb;
+    try {
+      nextDb = verifyAttendanceReport(db, reportId, status, comment, getTodayDateString());
+    } catch (error: any) {
+      alert(error?.message || "Gagal memproses verifikasi laporan. Silakan coba lagi.");
+      return;
+    }
+
     // onUpdateDb akan otomatis melakukan push ke Firebase secara background & sync realtime
     onUpdateDb(nextDb);
 
@@ -254,29 +261,41 @@ export default function AdminLaporan({ db, onUpdateDb, defaultMainTab = "pdf" }:
 
   const handleDeleteSession = (id: string) => {
     if (confirm(`Apakah Anda yakin ingin mengurungkan verifikasi dan menghapus Sesi ${id}? Perubahan akan disinkronkan ke seluruh perangkat.`)) {
-      const nextDb = deleteSessionTransaction(db, id);
-      onUpdateDb(nextDb);
-      setSuccessToast(`Sesi ${id} berhasil dihapus dan disinkronkan!`);
-      setTimeout(() => setSuccessToast(null), 4000);
+      try {
+        const nextDb = deleteSessionTransaction(db, id);
+        onUpdateDb(nextDb);
+        setSuccessToast(`Sesi ${id} berhasil dihapus dan disinkronkan!`);
+        setTimeout(() => setSuccessToast(null), 4000);
+      } catch (error: any) {
+        alert(error?.message || "Gagal menghapus sesi. Silakan coba lagi.");
+      }
     }
   };
 
   const handleUndoVerification = (id: string, currentStatus: "setuju" | "tolak") => {
     const actionText = currentStatus === "setuju" ? "Penyetujuan" : "Penolakan";
     if (confirm(`Urungkan ${actionText} untuk laporan ${id}? Status laporan dikembalikan ke Pending di semua perangkat.`)) {
-      const nextDb = undoVerifyAttendanceReport(db, id);
-      onUpdateDb(nextDb);
-      setSuccessToast(`Verifikasi Laporan ${id} berhasil diurungkan!`);
-      setTimeout(() => setSuccessToast(null), 4000);
+      try {
+        const nextDb = undoVerifyAttendanceReport(db, id);
+        onUpdateDb(nextDb);
+        setSuccessToast(`Verifikasi Laporan ${id} berhasil diurungkan!`);
+        setTimeout(() => setSuccessToast(null), 4000);
+      } catch (error: any) {
+        alert(error?.message || "Gagal mengurungkan verifikasi. Silakan coba lagi.");
+      }
     }
   };
 
   const handleDeleteReport = (id: string) => {
     if (confirm(`Apakah Anda yakin ingin menghapus Laporan ${id} secara permanen?`)) {
-      const nextDb = deleteAttendanceReport(db, id);
-      onUpdateDb(nextDb);
-      setSuccessToast(`Laporan ${id} berhasil dihapus permanen!`);
-      setTimeout(() => setSuccessToast(null), 4000);
+      try {
+        const nextDb = deleteAttendanceReport(db, id);
+        onUpdateDb(nextDb);
+        setSuccessToast(`Laporan ${id} berhasil dihapus permanen!`);
+        setTimeout(() => setSuccessToast(null), 4000);
+      } catch (error: any) {
+        alert(error?.message || "Gagal menghapus laporan. Silakan coba lagi.");
+      }
     }
   };
 

@@ -99,13 +99,19 @@ export default function TutorDashboard({
     }
 
     // Call core transaction
-    const nextDb = addSessionTransaction(db, {
-      tanggal: getTodayDateString(), // Today's Context Date
-      siswaId,
-      tutorId,
-      programId,
-      catatan: `Pertemuan Mengajar Real-time (Program: ${selectedProgram?.nama})`
-    });
+    let nextDb;
+    try {
+      nextDb = addSessionTransaction(db, {
+        tanggal: getTodayDateString(), // Today's Context Date
+        siswaId,
+        tutorId,
+        programId,
+        catatan: `Pertemuan Mengajar Real-time (Program: ${selectedProgram?.nama})`
+      });
+    } catch (error: any) {
+      alert(error?.message || "Gagal menyimpan riwayat pertemuan. Silakan coba lagi.");
+      return;
+    }
 
     onUpdateDb(nextDb);
 
@@ -127,13 +133,19 @@ export default function TutorDashboard({
       return;
     }
 
-    const nextDb = addPaymentTransaction(db, {
-      tanggal: depositTanggal || getTodayDateString(),
-      siswaId: depositSiswaId,
-      jumlah: Number(depositJumlah),
-      metode: "tutor",
-      tutorId: tutorId
-    });
+    let nextDb;
+    try {
+      nextDb = addPaymentTransaction(db, {
+        tanggal: depositTanggal || getTodayDateString(),
+        siswaId: depositSiswaId,
+        jumlah: Number(depositJumlah),
+        metode: "tutor",
+        tutorId: tutorId
+      });
+    } catch (error: any) {
+      alert(error?.message || "Gagal mencatat uang titipan. Silakan coba lagi.");
+      return;
+    }
 
     onUpdateDb(nextDb);
 

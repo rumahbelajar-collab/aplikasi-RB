@@ -199,13 +199,19 @@ export default function AdminKeuangan({
       return;
     }
 
-    const nextDb = addPaymentTransaction(db, {
-      tanggal: payTanggal,
-      siswaId: paySiswaId,
-      jumlah: Number(payJumlah),
-      metode: payMetode,
-      tutorId: payMetode === "tutor" ? payTutorId : undefined
-    });
+    let nextDb;
+    try {
+      nextDb = addPaymentTransaction(db, {
+        tanggal: payTanggal,
+        siswaId: paySiswaId,
+        jumlah: Number(payJumlah),
+        metode: payMetode,
+        tutorId: payMetode === "tutor" ? payTutorId : undefined
+      });
+    } catch (error: any) {
+      alert(error?.message || "Gagal mencatat pembayaran. Silakan coba lagi.");
+      return;
+    }
 
     onUpdateDb(nextDb);
     setIsPayModalOpen(false);
@@ -314,8 +320,13 @@ export default function AdminKeuangan({
     if (!payItem) return;
 
     const todayStr = getTodayDateString();
-    const nextDb = confirmTutorDepositHandover(db, paymentId, todayStr);
-    onUpdateDb(nextDb);
+    try {
+      const nextDb = confirmTutorDepositHandover(db, paymentId, todayStr);
+      onUpdateDb(nextDb);
+    } catch (error: any) {
+      alert(error?.message || "Gagal mengonfirmasi setoran titipan. Silakan coba lagi.");
+      return;
+    }
     setConfirmingHandoverId(null);
   };
 
@@ -325,8 +336,12 @@ export default function AdminKeuangan({
     if (!payItem) return;
 
     if (window.confirm(`Apakah Anda yakin ingin membatalkan verifikasi setoran ${payItem.id} (${formatRupiah(payItem.jumlah)})? Status titipan akan dikembalikan menjadi 'Di Tangan Tutor' dan transaksi pembukuan kas/piutang siswa terkait akan dibatalkan.`)) {
-      const nextDb = undoTutorDepositHandover(db, paymentId);
-      onUpdateDb(nextDb);
+      try {
+        const nextDb = undoTutorDepositHandover(db, paymentId);
+        onUpdateDb(nextDb);
+      } catch (error: any) {
+        alert(error?.message || "Gagal membatalkan verifikasi setoran. Silakan coba lagi.");
+      }
     }
   };
 

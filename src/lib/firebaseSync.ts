@@ -2,6 +2,8 @@ import {
   doc,
   getDoc,
   setDoc,
+  collection,
+  getDocs,
   onSnapshot,
   type Unsubscribe,
 } from "firebase/firestore";
@@ -18,28 +20,34 @@ import {
 } from "./firebaseConfig";
 
 /* =========================================================
-   MODUL SINKRONISASI FIREBASE (Firestore)
+   MODUL SINKRONISASI FIREBASE (Firestore - Multi Document)
 
-   Ini pengganti src/lib/googleSheets.ts. Nama-nama fungsi
-   SENGAJA dibuat sama seperti sebelumnya (pullFromGoogleSheets,
-   pushToGoogleSheets, dst) supaya App.tsx cukup ganti satu
-   baris import saja, tanpa perlu menulis ulang logic di
-   App.tsx.
-
-   Seluruh database (satu objek besar `Database` dari db.ts)
-   disimpan sebagai SATU dokumen Firestore di:
-     koleksi "rumahBelajar" -> dokumen "database"
-
-   Ini pas untuk skala aplikasi ini (data satu lembaga
-   bimbingan belajar). Kalau suatu saat datanya sudah sangat
-   besar (>1MB, batas ukuran 1 dokumen Firestore), baru perlu
-   dipecah per koleksi (siswa, tutor, dst) -- tapi untuk
-   sekarang belum perlu.
+   Mengatasi batas 1 MB Firestore dengan memecah database
+   menjadi beberapa dokumen terpisah di dalam koleksi "rumahBelajar".
+   Setiap key utama pada objek Database disimpan sebagai dokumen
+   tersendiri (misal: dokumen "students", "tutors", "payments", dll).
 ========================================================= */
 
 const LOCAL_STORAGE_KEY = "rumah_belajar_db_v2";
 const COLLECTION_NAME = "rumahBelajar";
-const DOCUMENT_ID = "database";
+
+// Daftar tabel/koleksi yang ada di dalam Database
+const DATABASE_KEYS: Array<keyof Database> = [
+  "programs",
+  "students",
+  "tutors",
+  "sessions",
+  "payments",
+  "slips",
+  "otherIncomes",
+  "expenses",
+  "attendanceReports",
+  "schedules",
+  "raports",
+  "studentLedger",
+  "tutorLedger",
+  "kas",
+];
 
 export interface SyncState {
   status: "idle" | "syncing" | "success" | "error";
@@ -85,24 +93,7 @@ export function subscribeToSyncState(
 export function isEmptyDatabase(database: any): boolean {
   if (!database) return true;
 
-  const collections = [
-    "programs",
-    "students",
-    "tutors",
-    "sessions",
-    "payments",
-    "slips",
-    "otherIncomes",
-    "expenses",
-    "attendanceReports",
-    "schedules",
-    "raports",
-    "studentLedger",
-    "tutorLedger",
-    "kas",
-  ];
-
-  return collections.every((key) => {
+  return DATABASE_KEYS.every((key) => {
     const value = database[key];
 
     if (Array.isArray(value)) return value.length === 0;
@@ -135,30 +126,15 @@ function readLocalCache(): Database | null {
   }
 }
 
-function getDatabaseDocRef() {
-  return doc(getFirestoreDb(), COLLECTION_NAME, DOCUMENT_ID);
-}
-
 /* =========================================================
    BERSIHKAN NILAI `undefined` SEBELUM DIKIRIM KE FIRESTORE
-
-   Firestore menolak field bernilai `undefined` (beda dengan
-   `null`). Beberapa record di aplikasi ini (mis. pembayaran
-   siswa via "titipan tutor") sengaja menyimpan properti
-   seperti `tanggalSerah: undefined` atau `tutorId: undefined`
-   tergantung kondisinya. Kalau ini lolos ke setDoc(), SELURUH
-   penyimpanan ke Firebase gagal, bukan cuma satu record saja.
-
-   JSON.stringify secara alami membuang key yang nilainya
-   `undefined`, jadi cara paling aman & menyeluruh adalah
-   round-trip lewat JSON sebelum dikirim.
 ========================================================= */
 function stripUndefinedDeep<T>(value: T): T {
   return JSON.parse(JSON.stringify(value));
 }
 
 /* =========================================================
-   BACA DATABASE DARI CLOUD (sekali ambil)
+   BACA DATABASE DARI CLOUD (Multi-Document Fetch)
 ========================================================= */
 
 export async function readCloudDatabase(): Promise<{
@@ -168,20 +144,29 @@ export async function readCloudDatabase(): Promise<{
   try {
     await ensureAnonymousAuth();
 
-    const snapshot = await getDoc(getDatabaseDocRef());
+    const dbRef = collection(getFirestoreDb(), COLLECTION_NAME);
+    const snapshot = await getDocs(dbRef);
 
-    if (!snapshot.exists()) {
+    if (snapshot.empty) {
       return { db: null, updatedAt: null };
     }
 
-    const rawData = snapshot.data();
+    const partialData: Record<string, any> = {};
 
-    if (!rawData || typeof rawData !== "object") {
+    snapshot.forEach((docSnap) => {
+      const data = docSnap.data();
+      // Setiap dokumen menyimpan property 'payload' atau langsung isinya
+      if (data && "payload" in data) {
+        partialData[docSnap.id] = data.payload;
+      }
+    });
+
+    if (Object.keys(partialData).length === 0) {
       return { db: null, updatedAt: null };
     }
 
     const database = recalculateAllLedgers(
-      ensureDatabaseDefaults(rawData)
+      ensureDatabaseDefaults(partialData)
     );
 
     saveLocalCache(database);
@@ -232,7 +217,7 @@ export async function pullFromGoogleSheets(): Promise<Database | null> {
 }
 
 /* =========================================================
-   PUSH (kirim perubahan ke Firestore)
+   PUSH (kirim perubahan terpecah ke Firestore)
 ========================================================= */
 
 let pushTimer: ReturnType<typeof window.setTimeout> | null = null;
@@ -253,9 +238,22 @@ async function performPush(
       ensureDatabaseDefaults(localDb)
     );
 
-    const payload = stripUndefinedDeep(normalized);
+    const dbInstance = getFirestoreDb();
 
-    await setDoc(getDatabaseDocRef(), payload);
+    // Simpan tiap key/tabel ke dokumen terpisah agar ukuran < 1 MB per dokumen
+    for (const key of DATABASE_KEYS) {
+      const docRef = doc(dbInstance, COLLECTION_NAME, key);
+      const sectionData = normalized[key];
+      const payload = stripUndefinedDeep({ payload: sectionData });
+      
+      await setDoc(docRef, payload);
+    }
+
+    // Simpan juga metadata umum seperti lastUpdated jika ada
+    const metaRef = doc(dbInstance, COLLECTION_NAME, "metadata");
+    await setDoc(metaRef, {
+      payload: { lastUpdated: normalized.lastUpdated || new Date().toISOString() }
+    });
 
     saveLocalCache(normalized);
 
@@ -322,35 +320,41 @@ export function pushToGoogleSheets(
 }
 
 /* =========================================================
-   REALTIME: DENGARKAN PERUBAHAN LANGSUNG DARI FIRESTORE
-
-   Ini pengganti polling 15 detik ala Google Spreadsheet.
-   Firestore mendukung listener realtime bawaan (onSnapshot),
-   jadi perubahan dari perangkat lain langsung masuk dalam
-   hitungan detik, tanpa perlu polling berkala -- lebih hemat
-   kuota & lebih cepat.
+   REALTIME: DENGARKAN PERUBAHAN DARI FIRESTORE (Multi-Document)
 ========================================================= */
 
 export function subscribeToDatabaseChanges(
   callback: (db: Database) => void
 ): () => void {
-  let unsubscribeSnapshot: Unsubscribe | null = null;
   let stopped = false;
+  const unsubscribers: Unsubscribe[] = [];
 
   ensureAnonymousAuth()
     .then(() => {
       if (stopped) return;
 
-      unsubscribeSnapshot = onSnapshot(
-        getDatabaseDocRef(),
-        (snapshot) => {
-          if (!snapshot.exists()) return;
+      const dbInstance = getFirestoreDb();
+      const dbRef = collection(dbInstance, COLLECTION_NAME);
 
-          const rawData = snapshot.data();
-          if (!rawData || typeof rawData !== "object") return;
+      // Gunakan onSnapshot pada koleksi untuk memantau perubahan dokumen apa pun di dalamnya
+      const unsub = onSnapshot(
+        dbRef,
+        async (snapshot) => {
+          if (snapshot.empty) return;
+
+          const partialData: Record<string, any> = {};
+
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            if (data && "payload" in data) {
+              partialData[docSnap.id] = data.payload;
+            }
+          });
+
+          if (Object.keys(partialData).length === 0) return;
 
           const finalDb = recalculateAllLedgers(
-            ensureDatabaseDefaults(rawData)
+            ensureDatabaseDefaults(partialData)
           );
 
           saveLocalCache(finalDb);
@@ -372,6 +376,8 @@ export function subscribeToDatabaseChanges(
           });
         }
       );
+
+      unsubscribers.push(unsub);
     })
     .catch((error) => {
       console.warn("[Firebase] Gagal masuk (auth anonim):", error);
@@ -384,10 +390,7 @@ export function subscribeToDatabaseChanges(
 
   return () => {
     stopped = true;
-
-    if (unsubscribeSnapshot) {
-      unsubscribeSnapshot();
-    }
+    unsubscribers.forEach((unsub) => unsub());
   };
 }
 
