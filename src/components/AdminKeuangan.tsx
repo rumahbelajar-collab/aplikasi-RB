@@ -1,28 +1,25 @@
 import React, { useState, useEffect } from "react";
-import { 
-  Users, 
-  Wallet, 
-  Coins, 
-  Receipt, 
-  BookOpen, 
-  Calendar, 
-  Plus, 
+import {
+  Coins,
+  Receipt,
+  Plus,
   Minus,
-  Check, 
-  ArrowUpRight, 
-  ArrowDownLeft, 
+  Check,
+  ArrowUpRight,
+  ArrowDownLeft,
   ChevronRight,
   ChevronLeft,
   Download,
   Info,
-  DollarSign,
-  RotateCcw
+  RotateCcw,
+  Pencil,
+  Trash2
 } from "lucide-react";
-import { 
-  Database, 
-  formatRupiah, 
-  formatTanggalIndo, 
-  saveDatabase,
+import {
+  Database,
+  LedgerContext,
+  formatRupiah,
+  formatTanggalIndo,
   getStudentBalance,
   getTutorHonorBalance,
   getTutorDepositBalance,
@@ -33,18 +30,41 @@ import {
   payTutorHonorTransaction,
   addGeneralExpenseTransaction,
   addOtherIncomeTransaction,
+  updateTransactionAmount,
+  deleteTransactionBySource,
+  describeTransactionDelete,
+  findTransactionSource,
   filterByDateRange,
   getTodayDateString,
   formatBulanTahun
 } from "../lib/db";
-import { 
-  downloadRekeningBelajarPDF, 
-  downloadRekeningHonorTutorPDF, 
-  downloadSlipGajiPDF 
+import {
+  downloadRekeningBelajarPDF,
+  downloadRekeningHonorTutorPDF,
+  downloadSlipGajiPDF
 } from "../lib/pdfGenerator";
 import DateRangeFilter, { DateRangePreset } from "./DateRangeFilter";
 import CustomDatePicker from "./CustomDatePicker";
 import { Siswa, Tutor } from "../types";
+
+// Memendekkan ID transaksi untuk TAMPILAN saja (mis. "PAY-LX8K3F2N-A1B2C3D4"
+// jadi "PAY-A1B2C3D4"). Data ID asli di database TIDAK berubah -- ini
+// murni supaya badge di layar tidak terlalu panjang. Arahkan kursor
+// (hover) ke badge-nya untuk melihat ID lengkap.
+function formatShortId(id: string): string {
+  if (!id) return id;
+  const parts = id.split("-");
+  if (parts.length >= 3) {
+    return `${parts[0]}-${parts[parts.length - 1]}`;
+  }
+  return id;
+}
+
+interface EditTarget {
+  refId: string;
+  context: LedgerContext;
+  keterangan: string;
+}
 
 interface AdminKeuanganProps {
   db: Database;
@@ -91,10 +111,10 @@ export default function AdminKeuangan({
   });
 
   // Sorted students and tutors by ID (numeric/natural sorting)
-  const sortedStudents = [...(db.students || [])].sort((a, b) => 
+  const sortedStudents = [...(db.students || [])].sort((a, b) =>
     (a.id || "").localeCompare(b.id || "", undefined, { numeric: true, sensitivity: "base" })
   );
-  const sortedTutors = [...(db.tutors || [])].sort((a, b) => 
+  const sortedTutors = [...(db.tutors || [])].sort((a, b) =>
     (a.id || "").localeCompare(b.id || "", undefined, { numeric: true, sensitivity: "base" })
   );
 
@@ -138,6 +158,10 @@ export default function AdminKeuangan({
 
   // Handover confirmation state
   const [confirmingHandoverId, setConfirmingHandoverId] = useState<string | null>(null);
+
+  // Edit nominal state (dipakai oleh Tagihan, Titipan, Honor, dan Buku Kas)
+  const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
+  const [editJumlah, setEditJumlah] = useState(0);
 
   // Handle deep-linking from Operasional Tab
   useEffect(() => {
@@ -199,28 +223,22 @@ export default function AdminKeuangan({
       return;
     }
 
-    let nextDb;
-    try {
-      nextDb = addPaymentTransaction(db, {
-        tanggal: payTanggal,
-        siswaId: paySiswaId,
-        jumlah: Number(payJumlah),
-        metode: payMetode,
-        tutorId: payMetode === "tutor" ? payTutorId : undefined
-      });
-    } catch (error: any) {
-      alert(error?.message || "Gagal mencatat pembayaran. Silakan coba lagi.");
-      return;
-    }
+    const nextDb = addPaymentTransaction(db, {
+      tanggal: payTanggal,
+      siswaId: paySiswaId,
+      jumlah: Number(payJumlah),
+      metode: payMetode,
+      tutorId: payMetode === "tutor" ? payTutorId : undefined
+    });
 
     onUpdateDb(nextDb);
     setIsPayModalOpen(false);
-    
+
     // Refresh currently selected student ledger context if open
     if (selectedStudent && selectedStudent.id === paySiswaId) {
       setSelectedStudent(nextDb.students.find(s => s.id === paySiswaId) || null);
     }
-    
+
     alert("Pembayaran berhasil dicatat.");
   };
 
@@ -320,13 +338,8 @@ export default function AdminKeuangan({
     if (!payItem) return;
 
     const todayStr = getTodayDateString();
-    try {
-      const nextDb = confirmTutorDepositHandover(db, paymentId, todayStr);
-      onUpdateDb(nextDb);
-    } catch (error: any) {
-      alert(error?.message || "Gagal mengonfirmasi setoran titipan. Silakan coba lagi.");
-      return;
-    }
+    const nextDb = confirmTutorDepositHandover(db, paymentId, todayStr);
+    onUpdateDb(nextDb);
     setConfirmingHandoverId(null);
   };
 
@@ -336,18 +349,111 @@ export default function AdminKeuangan({
     if (!payItem) return;
 
     if (window.confirm(`Apakah Anda yakin ingin membatalkan verifikasi setoran ${payItem.id} (${formatRupiah(payItem.jumlah)})? Status titipan akan dikembalikan menjadi 'Di Tangan Tutor' dan transaksi pembukuan kas/piutang siswa terkait akan dibatalkan.`)) {
-      try {
-        const nextDb = undoTutorDepositHandover(db, paymentId);
-        onUpdateDb(nextDb);
-      } catch (error: any) {
-        alert(error?.message || "Gagal membatalkan verifikasi setoran. Silakan coba lagi.");
-      }
+      const nextDb = undoTutorDepositHandover(db, paymentId);
+      onUpdateDb(nextDb);
     }
+  };
+
+  /* ======================================================
+     EDIT NOMINAL & HAPUS PER ITEM TRANSAKSI
+     ====================================================== */
+
+  // Petunjuk di modal edit, supaya jelas nominal apa yang diubah
+  const getEditHint = (refId: string, context: LedgerContext): string => {
+    const kind = findTransactionSource(db, refId);
+    if (kind === "session") {
+      return context === "honor"
+        ? "Mengubah honor tutor untuk sesi ini (snapshot honor). Rekening siswa tidak berubah."
+        : "Mengubah tarif siswa untuk sesi ini (snapshot tarif). Honor tutor tidak berubah.";
+    }
+    if (kind === "slip") {
+      return context === "kas"
+        ? "Nominal bersih yang dibayarkan (setelah potongan). Total honor di rekening tutor ikut menyesuaikan."
+        : "Total honor (sebelum potongan). Potongan tetap, nominal bersih di Buku Kas ikut menyesuaikan.";
+    }
+    if (kind === "payment") {
+      return "Nominal pembayaran. Rekening siswa dan Buku Kas ikut menyesuaikan.";
+    }
+    if (kind === "income" || kind === "expense") {
+      return "Nominal transaksi di Buku Kas.";
+    }
+    return "";
+  };
+
+  const openEdit = (refId: string, context: LedgerContext, keterangan: string, jumlah: number) => {
+    setEditTarget({ refId, context, keterangan });
+    setEditJumlah(jumlah);
+  };
+
+  const handleEditSave = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editTarget) return;
+    if (!editJumlah || editJumlah <= 0) {
+      alert("Nominal harus lebih dari 0.");
+      return;
+    }
+    try {
+      const nextDb = updateTransactionAmount(
+        db,
+        editTarget.refId,
+        Number(editJumlah),
+        editTarget.context
+      );
+      onUpdateDb(nextDb);
+      setEditTarget(null);
+    } catch (err: any) {
+      alert(err?.message || "Gagal mengubah nominal transaksi.");
+    }
+  };
+
+  const handleDeleteItem = (refId: string, keterangan: string) => {
+    const dampak = describeTransactionDelete(db, refId);
+    if (!window.confirm(`Hapus transaksi "${keterangan}"?\n\n${dampak}\n\nSaldo akan dihitung ulang dan tindakan ini tidak bisa dibatalkan.`)) {
+      return;
+    }
+    try {
+      const nextDb = deleteTransactionBySource(db, refId);
+      onUpdateDb(nextDb);
+    } catch (err: any) {
+      alert(err?.message || "Gagal menghapus transaksi.");
+    }
+  };
+
+  // Tombol Edit + Hapus (dipakai di semua tabel & kartu titipan)
+  const renderRowActions = (
+    refId: string | undefined,
+    context: LedgerContext,
+    keterangan: string,
+    jumlah: number
+  ) => {
+    if (!refId) {
+      return <span className="text-slate-300 text-[10px]">-</span>;
+    }
+    return (
+      <div className="flex items-center justify-center gap-1">
+        <button
+          type="button"
+          title="Edit nominal"
+          onClick={() => openEdit(refId, context, keterangan, jumlah)}
+          className="p-1.5 rounded-lg bg-slate-50 hover:bg-brand-50 text-slate-400 hover:text-brand-600 cursor-pointer active:scale-95 transition-all"
+        >
+          <Pencil size={12} />
+        </button>
+        <button
+          type="button"
+          title="Hapus transaksi"
+          onClick={() => handleDeleteItem(refId, keterangan)}
+          className="p-1.5 rounded-lg bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 cursor-pointer active:scale-95 transition-all"
+        >
+          <Trash2 size={12} />
+        </button>
+      </div>
+    );
   };
 
   return (
     <div id="admin-keuangan-container" className="px-4 py-4 pb-20">
-      
+
       {/* CENTRAL DATE RANGE FILTER */}
       <DateRangeFilter
         rangeType={rangeType}
@@ -409,7 +515,7 @@ export default function AdminKeuangan({
             // Student account summaries list
             <div className="space-y-2.5">
               <div className="flex justify-between items-center mb-1">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Rekening Tagiahan Siswa (SPP)</span>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Rekening Tagihan Siswa (SPP)</span>
                 <button
                   id="keu-pay-siswa-btn"
                   onClick={() => setIsPayModalOpen(true)}
@@ -422,8 +528,7 @@ export default function AdminKeuangan({
 
               {sortedStudents.map((student) => {
                 const balance = getStudentBalance(db, student.id);
-                const prog = db.programs.find(p => p.id === student.programId);
-                
+
                 return (
                   <div
                     key={student.id}
@@ -476,10 +581,11 @@ export default function AdminKeuangan({
                 {(() => {
                   const studentLedgerAll = db.studentLedger.filter(l => l.siswaId === selectedStudent.id);
                   const filteredLedger = filterByDateRange(studentLedgerAll, rangeType, customStart, customEnd);
-                  
+
                   const debit = filteredLedger.filter(l => l.tipe === "debit").reduce((sum, l) => sum + l.jumlah, 0);
                   const credit = filteredLedger.filter(l => l.tipe === "kredit").reduce((sum, l) => sum + l.jumlah, 0);
-                  const currentBalance = getStudentBalance(db, selectedStudent.id);                  const activeProg = db.programs.find(p => p.id === selectedStudent.programId);
+                  const currentBalance = getStudentBalance(db, selectedStudent.id);
+                  const activeProg = db.programs.find(p => p.id === selectedStudent.programId);
 
                   return (
                     <>
@@ -501,7 +607,7 @@ export default function AdminKeuangan({
                             {currentBalance > 0 ? `Kurang: ${formatRupiah(currentBalance)}` : currentBalance < 0 ? `Lebih: ${formatRupiah(Math.abs(currentBalance))}` : "Lunas : Rp 0"}
                           </span>
                         </div>
-                        
+
                         <div className="flex gap-1">
                           <button
                             id="pdf-rekening-download-btn"
@@ -536,6 +642,7 @@ export default function AdminKeuangan({
                                 <th className="p-2.5 text-right">Debit (+)</th>
                                 <th className="p-2.5 text-right">Kredit (-)</th>
                                 <th className="p-2.5 text-right">Saldo</th>
+                                <th className="p-2.5 text-center">Aksi</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -546,12 +653,15 @@ export default function AdminKeuangan({
                                   <td className="p-2.5 text-right font-mono font-medium text-rose-600">{item.tipe === "debit" ? formatRupiah(item.jumlah) : "-"}</td>
                                   <td className="p-2.5 text-right font-mono font-medium text-emerald-600">{item.tipe === "kredit" ? formatRupiah(item.jumlah) : "-"}</td>
                                   <td className="p-2.5 text-right font-mono font-semibold text-slate-600">{formatRupiah(item.saldoBerjalan)}</td>
+                                  <td className="p-2.5">
+                                    {renderRowActions((item as any).referensiId, "siswa", item.keterangan, item.jumlah)}
+                                  </td>
                                 </tr>
                               ))}
-                              
+
                               {filteredLedger.length === 0 && (
                                 <tr>
-                                  <td colSpan={5} className="p-6 text-center text-xs text-slate-400">Belum ada mutasi rekening untuk rentang tanggal ini.</td>
+                                  <td colSpan={6} className="p-6 text-center text-xs text-slate-400">Belum ada mutasi rekening untuk rentang tanggal ini.</td>
                                 </tr>
                               )}
                             </tbody>
@@ -573,11 +683,11 @@ export default function AdminKeuangan({
       {activeSubTab === "titipan" && (
         <div className="space-y-4">
           <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2.5">Status Saldo Titipan Tutor</h3>
-          <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs">            
+          <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-xs">
             <div className="space-y-3">
               {sortedTutors.map((tutor) => {
                 const pendingDeposit = getTutorDepositBalance(db, tutor.id);
-                
+
                 return (
                   <div key={tutor.id} id={`titipan-tutor-row-${tutor.id}`} className="flex items-center justify-between pb-3 last:pb-0 border-b border-slate-50 last:border-0">
                     <div>
@@ -610,14 +720,17 @@ export default function AdminKeuangan({
                 return (
                   <>
                     {filteredPayments.map((p) => (
-                      <div 
-                        key={p.id} 
+                      <div
+                        key={p.id}
                         id={`pending-payment-card-${p.id}`}
                         className="bg-white p-4 rounded-2xl border border-slate-100 shadow-3xs flex flex-col gap-2 relative"
                       >
                         <div className="flex justify-between items-center">
-                          <span className="text-[9.5px] font-bold font-mono bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full">
-                            {p.id}
+                          <span
+                            title={p.id}
+                            className="text-[9.5px] font-bold font-mono bg-amber-50 text-amber-700 px-2 py-0.5 rounded-full"
+                          >
+                            {formatShortId(p.id)}
                           </span>
                           <span className={`text-[9.5px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider ${
                             p.statusTitipan === "diserahkan" ? "bg-emerald-50 text-emerald-600" : "bg-rose-50/70 text-rose-600"
@@ -635,54 +748,64 @@ export default function AdminKeuangan({
                           )}
                         </div>
 
-                        <div className="flex justify-between items-center pt-2.5 border-t border-slate-50 mt-1">
+                        <div className="flex justify-between items-center pt-2.5 border-t border-slate-50 mt-1 gap-2 flex-wrap">
                           <div>
                             <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Jumlah Uang</span>
                             <p className="text-xs font-black text-slate-800 font-mono leading-tight">{formatRupiah(p.jumlah)}</p>
                           </div>
 
-                          {p.statusTitipan === "pending" && (
-                            confirmingHandoverId === p.id ? (
-                              <div className="flex flex-col gap-1.5 items-end bg-amber-50/75 p-2 rounded-xl border border-amber-100 max-w-[200px] animate-fade-in">
-                                <span className="text-[9px] font-bold text-amber-900 text-right">Konfirmasi terima dana?</span>
-                                <div className="flex gap-1.5">
-                                  <button
-                                    onClick={() => setConfirmingHandoverId(null)}
-                                    className="text-[9.5px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded-lg active:scale-95 transition-all cursor-pointer"
-                                  >
-                                    Batal
-                                  </button>
-                                  <button
-                                    onClick={() => handleHandoverConfirm(p.id)}
-                                    className="text-[9.5px] font-bold text-white bg-amber-600 hover:bg-amber-700 px-2.5 py-1 rounded-lg active:scale-95 transition-all cursor-pointer"
-                                  >
-                                    Ya, Setuju
-                                  </button>
+                          <div className="flex items-center gap-2">
+                            {p.statusTitipan === "pending" && (
+                              confirmingHandoverId === p.id ? (
+                                <div className="flex flex-col gap-1.5 items-end bg-amber-50/75 p-2 rounded-xl border border-amber-100 max-w-[200px] animate-fade-in">
+                                  <span className="text-[9px] font-bold text-amber-900 text-right">Konfirmasi terima dana?</span>
+                                  <div className="flex gap-1.5">
+                                    <button
+                                      onClick={() => setConfirmingHandoverId(null)}
+                                      className="text-[9.5px] font-bold text-slate-500 bg-white border border-slate-200 px-2 py-1 rounded-lg active:scale-95 transition-all cursor-pointer"
+                                    >
+                                      Batal
+                                    </button>
+                                    <button
+                                      onClick={() => handleHandoverConfirm(p.id)}
+                                      className="text-[9.5px] font-bold text-white bg-amber-600 hover:bg-amber-700 px-2.5 py-1 rounded-lg active:scale-95 transition-all cursor-pointer"
+                                    >
+                                      Ya, Setuju
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
-                            ) : (
-                              <button
-                                id={`confirm-handover-btn-${p.id}`}
-                                onClick={() => setConfirmingHandoverId(p.id)}
-                                className="flex items-center gap-1 text-[10px] font-black text-white bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded-xl shadow-xs cursor-pointer transition-all active:scale-95"
-                              >
-                                <Check size={12} />
-                                Konfirmasi Terima
-                              </button>
-                            )
-                          )}
+                              ) : (
+                                <button
+                                  id={`confirm-handover-btn-${p.id}`}
+                                  onClick={() => setConfirmingHandoverId(p.id)}
+                                  className="flex items-center gap-1 text-[10px] font-black text-white bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded-xl shadow-xs cursor-pointer transition-all active:scale-95"
+                                >
+                                  <Check size={12} />
+                                  Konfirmasi Terima
+                                </button>
+                              )
+                            )}
 
-                          {p.statusTitipan === "diserahkan" && (
-                            <button
-                              id={`undo-handover-btn-${p.id}`}
-                              onClick={() => handleHandoverUndo(p.id)}
-                              className="flex items-center gap-1 text-[10px] font-extrabold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95"
-                              title="Batalkan / Urungkan Verifikasi Setoran"
-                            >
-                              <RotateCcw size={12} />
-                              Batalkan Verifikasi
-                            </button>
-                          )}
+                            {p.statusTitipan === "diserahkan" && (
+                              <button
+                                id={`undo-handover-btn-${p.id}`}
+                                onClick={() => handleHandoverUndo(p.id)}
+                                className="flex items-center gap-1 text-[10px] font-extrabold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1.5 rounded-xl cursor-pointer transition-all active:scale-95"
+                                title="Batalkan / Urungkan Verifikasi Setoran"
+                              >
+                                <RotateCcw size={12} />
+                                Batalkan Verifikasi
+                              </button>
+                            )}
+
+                            {/* Edit nominal & hapus titipan */}
+                            {renderRowActions(
+                              p.id,
+                              "siswa",
+                              `Titipan ${p.siswaNama} - ${formatRupiah(p.jumlah)}`,
+                              p.jumlah
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -739,7 +862,7 @@ export default function AdminKeuangan({
                     <div className="text-right shrink-0 flex items-center gap-2">
                       <div>
                         <p className="text-[9px] text-slate-400 font-semibold uppercase tracking-wider">Sisa Honor</p>
-                        <p className={`text-xs font-black font-mono mt-0.5 text-indigo-600`}>
+                        <p className="text-xs font-black font-mono mt-0.5 text-indigo-600">
                           {formatRupiah(balance)}
                         </p>
                       </div>
@@ -823,7 +946,7 @@ export default function AdminKeuangan({
                       {/* Chronological Table ledger */}
                       <div className="mt-4">
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2">Riwayat Mutasi Honor</p>
-                        <div className="border border-slate-100 rounded-xl overflow-hidden overflow-x-auto scrollbar-nonetext-xs">
+                        <div className="border border-slate-100 rounded-xl overflow-hidden overflow-x-auto scrollbar-none text-xs">
                           <table className="w-full text-left border-collapse">
                             <thead>
                               <tr className="bg-slate-50 text-slate-400 font-bold uppercase text-[9px] border-b border-slate-100">
@@ -832,6 +955,7 @@ export default function AdminKeuangan({
                                 <th className="p-2.5 text-right">Debit (Tarik)</th>
                                 <th className="p-2.5 text-right">Kredit (Hak Sesi)</th>
                                 <th className="p-2.5 text-right">Saldo Honor</th>
+                                <th className="p-2.5 text-center">Aksi</th>
                               </tr>
                             </thead>
                             <tbody>
@@ -842,12 +966,15 @@ export default function AdminKeuangan({
                                   <td className="p-2.5 text-right font-mono font-medium text-rose-600">{item.tipe === "debit" ? formatRupiah(item.jumlah) : "-"}</td>
                                   <td className="p-2.5 text-right font-mono font-medium text-indigo-600">{item.tipe === "kredit" ? formatRupiah(item.jumlah) : "-"}</td>
                                   <td className="p-2.5 text-right font-mono font-semibold text-slate-600">{formatRupiah(item.saldoBerjalan)}</td>
+                                  <td className="p-2.5">
+                                    {renderRowActions((item as any).referensiId, "honor", item.keterangan, item.jumlah)}
+                                  </td>
                                 </tr>
                               ))}
 
                               {filteredLedger.length === 0 && (
                                 <tr>
-                                  <td colSpan={5} className="p-6 text-center text-xs text-slate-400">Belum ada mutasi honor untuk rentang tanggal ini.</td>
+                                  <td colSpan={6} className="p-6 text-center text-xs text-slate-400">Belum ada mutasi honor untuk rentang tanggal ini.</td>
                                 </tr>
                               )}
                             </tbody>
@@ -874,7 +1001,7 @@ export default function AdminKeuangan({
               <p className="text-[10px] text-emerald-100 uppercase tracking-widest font-bold">Total Saldo Kas Lembaga Saat Ini</p>
               <h2 className="text-2xl font-black font-mono tracking-tight mt-1">{formatRupiah(getKasLembagaBalance(db))}</h2>
             </div>
-            
+
             <div className="flex flex-wrap items-center gap-2.5">
               <button
                 id="record-other-income-btn"
@@ -900,7 +1027,7 @@ export default function AdminKeuangan({
             <div className="flex items-center justify-between mb-2.5">
               <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Arus Buku Kas Lembaga</h3>
             </div>
-            
+
             <div className="border border-slate-100 rounded-2xl bg-white overflow-hidden overflow-x-auto scrollbar-none text-xs shadow-3xs">
               <table className="w-full text-left border-collapse">
                 <thead>
@@ -910,6 +1037,7 @@ export default function AdminKeuangan({
                     <th className="p-3 text-right">Inflow(+)</th>
                     <th className="p-3 text-right">Outflow(-)</th>
                     <th className="p-3 text-right">Saldo Kas</th>
+                    <th className="p-3 text-center">Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -924,12 +1052,15 @@ export default function AdminKeuangan({
                             <td className="p-3 text-right font-mono font-medium text-emerald-600">{item.tipe === "masuk" ? formatRupiah(item.jumlah) : "-"}</td>
                             <td className="p-3 text-right font-mono font-medium text-rose-600">{item.tipe === "keluar" ? formatRupiah(item.jumlah) : "-"}</td>
                             <td className="p-3 text-right font-mono font-semibold text-slate-600">{formatRupiah(item.saldoBerjalan)}</td>
+                            <td className="p-3">
+                              {renderRowActions(item.referensiId, "kas", item.keterangan, item.jumlah)}
+                            </td>
                           </tr>
                         ))}
 
                         {filteredKas.length === 0 && (
                           <tr>
-                            <td colSpan={5} className="p-6 text-center text-xs text-slate-400">Belum ada pencatatan kas pada periode ini.</td>
+                            <td colSpan={6} className="p-6 text-center text-xs text-slate-400">Belum ada pencatatan kas pada periode ini.</td>
                           </tr>
                         )}
                       </>
@@ -945,7 +1076,7 @@ export default function AdminKeuangan({
       {/* ========================================================
           MODALS & FORMS
           ======================================================== */}
-      
+
       {/* 1. STUDENT PAYMENT MODAL */}
       {isPayModalOpen && (
         <div id="payment-form-modal" className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
@@ -1313,6 +1444,59 @@ export default function AdminKeuangan({
                   className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all"
                 >
                   Simpan Pemasukan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 5. EDIT NOMINAL TRANSAKSI MODAL */}
+      {editTarget && (
+        <div id="edit-amount-modal" className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
+          <div className="bg-white w-full max-w-sm rounded-3xl shadow-xl overflow-hidden animate-slide-up">
+            <div className="bg-brand-600 text-white p-4 flex justify-between items-center">
+              <h3 className="font-bold text-sm tracking-tight">Edit Nominal Transaksi</h3>
+              <Pencil size={18} />
+            </div>
+
+            <form onSubmit={handleEditSave} className="p-5 space-y-4">
+              <p className="text-xs text-slate-600 font-semibold leading-snug">{editTarget.keterangan}</p>
+
+              <div>
+                <label className="block text-[10.5px] text-slate-400 font-bold uppercase tracking-wider mb-1">Nominal Baru (Rupiah) *</label>
+                <input
+                  type="number"
+                  id="input-edit-jumlah"
+                  required
+                  min="1"
+                  value={editJumlah}
+                  onChange={(e) => setEditJumlah(Number(e.target.value))}
+                  className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none font-mono"
+                />
+                {getEditHint(editTarget.refId, editTarget.context) && (
+                  <p className="text-[10px] text-amber-600 mt-1.5 flex items-start gap-1">
+                    <Info size={12} className="shrink-0 mt-0.5" />
+                    {getEditHint(editTarget.refId, editTarget.context)}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex gap-2 pt-3 border-t border-slate-50">
+                <button
+                  type="button"
+                  id="edit-cancel-btn"
+                  onClick={() => setEditTarget(null)}
+                  className="flex-1 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-500 font-bold text-xs rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  id="edit-save-btn"
+                  className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all"
+                >
+                  Simpan
                 </button>
               </div>
             </form>

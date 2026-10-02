@@ -14,7 +14,6 @@
   RaportSiswa
 } from "../types";
 
-
 /* =========================================================
    TYPES
 ========================================================= */
@@ -88,6 +87,7 @@ export interface Database {
 
   broadcastMessage: string;
   adminPassword?: string;
+  perpustakaanPassword?: string;
 
   lastUpdated: string;
 
@@ -127,10 +127,23 @@ const BULAN_INDO = [
 ========================================================= */
 
 export function generateUniqueId(prefix: string): string {
-  // Menghasilkan 5 digit angka acak (10000 s/d 99999) untuk SEMUA jenis ID
-  const digits = Math.floor(10000 + Math.random() * 90000);
+  const time = Date.now().toString(36).toUpperCase();
+  const random = Math.random().toString(36).slice(2, 10).toUpperCase();
 
-  return `${prefix}-${digits}`;
+  return `${prefix}-${time}-${random}`;
+}
+
+// Memendekkan ID untuk TAMPILAN saja, mis. "RP-MTPOKL8U-CE3A3VB7"
+// jadi "RP-CE3A3VB7". ID asli (referensiId, dsb) tetap utuh -- ini
+// hanya dipakai saat membuat teks "keterangan" transaksi supaya
+// tidak terlalu panjang di layar.
+export function shortId(id: string): string {
+  if (!id) return id;
+  const parts = id.split("-");
+  if (parts.length >= 3) {
+    return `${parts[0]}-${parts[parts.length - 1]}`;
+  }
+  return id;
 }
 
 /* =========================================================
@@ -158,10 +171,7 @@ export function formatTanggalIndo(dateStr: string): string {
 
   if (parts.length !== 3) return dateStr;
 
-  return `${parts[2].padStart(2, "0")}/${parts[1].padStart(
-    2,
-    "0"
-  )}/${parts[0]}`;
+  return `${parts[2].padStart(2, "0")}/${parts[1].padStart(2, "0")}/${parts[0]}`;
 }
 
 export function formatBulanTahun(dateStr: string): string {
@@ -183,9 +193,7 @@ export function getTodayDateString(): string {
 
   const tzOffset = d.getTimezoneOffset() * 60000;
 
-  return new Date(d.getTime() - tzOffset)
-    .toISOString()
-    .slice(0, 10);
+  return new Date(d.getTime() - tzOffset).toISOString().slice(0, 10);
 }
 
 /* =========================================================
@@ -203,8 +211,7 @@ function uniqueStrings(values: unknown[]): string[] {
     new Set(
       values.filter(
         (value): value is string =>
-          typeof value === "string" &&
-          value.trim() !== ""
+          typeof value === "string" && value.trim() !== ""
       )
     )
   );
@@ -225,9 +232,7 @@ function cloneDatabase(db: Database): Database {
     otherIncomes: [...(db.otherIncomes || [])],
     expenses: [...(db.expenses || [])],
 
-    attendanceReports: [
-      ...(db.attendanceReports || [])
-    ],
+    attendanceReports: [...(db.attendanceReports || [])],
 
     schedules: [...(db.schedules || [])],
     raports: [...(db.raports || [])],
@@ -240,7 +245,6 @@ function cloneDatabase(db: Database): Database {
   };
 }
 
-
 /* =========================================================
    SAVE HELPER
    GOOGLE SPREADSHEET MIGRATION
@@ -249,10 +253,7 @@ function cloneDatabase(db: Database): Database {
 function saveAndReturn(db: Database): Database {
   const normalized = ensureDatabaseDefaults(db);
 
-  safeSetItem(
-    DB_STORAGE_KEY,
-    JSON.stringify(normalized)
-  );
+  safeSetItem(DB_STORAGE_KEY, JSON.stringify(normalized));
 
   return normalized;
 }
@@ -261,32 +262,21 @@ function saveAndReturn(db: Database): Database {
    SAFE LOCAL STORAGE
 ========================================================= */
 
-export function safeGetItem(
-  key: string
-): string | null {
+export function safeGetItem(key: string): string | null {
   try {
     return localStorage.getItem(key);
   } catch (error) {
-    console.warn(
-      "[DB] localStorage get gagal:",
-      error
-    );
+    console.warn("[DB] localStorage get gagal:", error);
 
     return null;
   }
 }
 
-export function safeSetItem(
-  key: string,
-  value: string
-): void {
+export function safeSetItem(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
   } catch (error) {
-    console.warn(
-      "[DB] localStorage set gagal:",
-      error
-    );
+    console.warn("[DB] localStorage set gagal:", error);
   }
 }
 
@@ -314,6 +304,7 @@ export function generateCleanDatabase(): Database {
 
     // Pertahankan password admin default
     adminPassword: "Rumahbelajar01",
+    perpustakaanPassword: "Pustaka01",
 
     lastUpdated: new Date().toISOString(),
     deletedIds: []
@@ -336,9 +327,7 @@ export function ensureDatabaseDefaults(parsed: any): Database {
     sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
     payments: Array.isArray(parsed.payments) ? parsed.payments : [],
     slips: Array.isArray(parsed.slips) ? parsed.slips : [],
-    otherIncomes: Array.isArray(parsed.otherIncomes)
-      ? parsed.otherIncomes
-      : [],
+    otherIncomes: Array.isArray(parsed.otherIncomes) ? parsed.otherIncomes : [],
     expenses: Array.isArray(parsed.expenses) ? parsed.expenses : [],
     attendanceReports: Array.isArray(parsed.attendanceReports)
       ? parsed.attendanceReports
@@ -350,9 +339,7 @@ export function ensureDatabaseDefaults(parsed: any): Database {
       ? parsed.studentLedger
       : [],
 
-    tutorLedger: Array.isArray(parsed.tutorLedger)
-      ? parsed.tutorLedger
-      : [],
+    tutorLedger: Array.isArray(parsed.tutorLedger) ? parsed.tutorLedger : [],
 
     kas: Array.isArray(parsed.kas) ? parsed.kas : [],
 
@@ -366,6 +353,12 @@ export function ensureDatabaseDefaults(parsed: any): Database {
       parsed.adminPassword.trim() !== ""
         ? parsed.adminPassword
         : "Rumahbelajar01",
+
+    perpustakaanPassword:
+      typeof parsed.perpustakaanPassword === "string" &&
+      parsed.perpustakaanPassword.trim() !== ""
+        ? parsed.perpustakaanPassword
+        : "Pustaka01",
 
     lastUpdated:
       typeof parsed.lastUpdated === "string"
@@ -396,10 +389,7 @@ export function getDatabase(): Database {
     if (!raw) {
       const clean = generateCleanDatabase();
 
-      safeSetItem(
-        DB_STORAGE_KEY,
-        JSON.stringify(clean)
-      );
+      safeSetItem(DB_STORAGE_KEY, JSON.stringify(clean));
 
       return clean;
     }
@@ -408,17 +398,11 @@ export function getDatabase(): Database {
 
     return ensureDatabaseDefaults(parsed);
   } catch (error) {
-    console.warn(
-      "[DB] Gagal membaca database lokal:",
-      error
-    );
+    console.warn("[DB] Gagal membaca database lokal:", error);
 
     const clean = generateCleanDatabase();
 
-    safeSetItem(
-      DB_STORAGE_KEY,
-      JSON.stringify(clean)
-    );
+    safeSetItem(DB_STORAGE_KEY, JSON.stringify(clean));
 
     return clean;
   }
@@ -428,11 +412,8 @@ export function getDatabase(): Database {
    SAVE DATABASE
 ========================================================= */
 
-export function saveDatabase(
-  db: Database
-): void {
-  const recalculated =
-    recalculateAllLedgers(db);
+export function saveDatabase(db: Database): void {
+  const recalculated = recalculateAllLedgers(db);
 
   saveAndReturn(recalculated);
 }
@@ -440,50 +421,38 @@ export function saveDatabase(
 /**
  * Simpan data master tanpa rebuild ledger.
  */
-export function saveDatabaseOnly(
-  db: Database
-): Database {
+export function saveDatabaseOnly(db: Database): Database {
   const next = cloneDatabase(db);
 
-  next.lastUpdated =
-    new Date().toISOString();
+  next.lastUpdated = new Date().toISOString();
 
   return saveAndReturn(next);
 }
 
-export function updateDatabase(
-  db: Database
-): Database {
-  return saveAndReturn(
-    recalculateAllLedgers(db)
-  );
+export function updateDatabase(db: Database): Database {
+  return saveAndReturn(recalculateAllLedgers(db));
 }
 
 export function getLocalDatabase(): Database {
   return getDatabase();
 }
 
-export function saveLocalDatabase(
-  db: Database
-): void {
-  saveDatabase(
-    recalculateAllLedgers(db)
-  );
+export function saveLocalDatabase(db: Database): void {
+  saveDatabase(recalculateAllLedgers(db));
 }
 
-export function clearPrototypeData(
-  currentDb?: Database
-): Database {
-  const clean =
-    generateCleanDatabase();
+export function clearPrototypeData(currentDb?: Database): Database {
+  const clean = generateCleanDatabase();
 
-  clean.broadcastMessage =
-    currentDb?.broadcastMessage ||
-    DEFAULT_BROADCAST;
+  clean.broadcastMessage = currentDb?.broadcastMessage || DEFAULT_BROADCAST;
 
-    if (currentDb?.adminPassword) {
-      clean.adminPassword = currentDb.adminPassword;
-    }
+  if (currentDb?.adminPassword) {
+    clean.adminPassword = currentDb.adminPassword;
+  }
+
+  if (currentDb?.perpustakaanPassword) {
+    clean.perpustakaanPassword = currentDb.perpustakaanPassword;
+  }
 
   return saveAndReturn(clean);
 }
@@ -506,8 +475,7 @@ export function checkDuplicateSession(
       session.tanggal === data.tanggal &&
       session.siswaId === data.siswaId &&
       session.tutorId === data.tutorId &&
-      (!data.programId ||
-        session.programId === data.programId)
+      (!data.programId || session.programId === data.programId)
   );
 }
 
@@ -527,37 +495,21 @@ export function addSessionTransaction(
 ): Database {
   const next = cloneDatabase(db);
 
-  const student = next.students.find(
-    (s) => s.id === data.siswaId
-  );
-
-  const tutor = next.tutors.find(
-    (t) => t.id === data.tutorId
-  );
-
-  const program = next.programs.find(
-    (p) => p.id === data.programId
-  );
+  const student = next.students.find((s) => s.id === data.siswaId);
+  const tutor = next.tutors.find((t) => t.id === data.tutorId);
+  const program = next.programs.find((p) => p.id === data.programId);
 
   if (!student || !tutor || !program) {
-    throw new Error(
-      "Data siswa, tutor, atau program tidak ditemukan."
-    );
+    throw new Error("Data siswa, tutor, atau program tidak ditemukan.");
   }
 
-  if (
-    checkDuplicateSession(
-      next,
-      data
-    )
-  ) {
+  if (checkDuplicateSession(next, data)) {
     throw new Error(
       "Sesi untuk tutor, siswa, program, dan tanggal tersebut sudah ada."
     );
   }
 
-  const sessionId =
-    generateUniqueId("RP");
+  const sessionId = generateUniqueId("RP");
 
   next.sessions.unshift({
     id: sessionId,
@@ -573,32 +525,20 @@ export function addSessionTransaction(
     programId: program.id,
     programNama: program.nama,
 
-    tarifSiswaSnapshot:
-      amount(program.tarifSiswa),
+    tarifSiswaSnapshot: amount(program.tarifSiswa),
 
-    honorTutorSnapshot:
-      amount(program.honorTutor),
+    honorTutorSnapshot: amount(program.honorTutor),
 
-    catatan:
-      data.catatan ||
-      `Sesi pembelajaran ${program.nama}`
+    catatan: data.catatan || `Sesi pembelajaran ${program.nama}`
   });
 
   if (!student.programId) {
-    next.students =
-      next.students.map((s) =>
-        s.id === student.id
-          ? {
-              ...s,
-              programId: program.id
-            }
-          : s
-      );
+    next.students = next.students.map((s) =>
+      s.id === student.id ? { ...s, programId: program.id } : s
+    );
   }
 
-  return saveAndReturn(
-    recalculateAllLedgers(next)
-  );
+  return saveAndReturn(recalculateAllLedgers(next));
 }
 
 /* =========================================================
@@ -617,49 +557,28 @@ export function addPaymentTransaction(
 ): Database {
   const next = cloneDatabase(db);
 
-  const student =
-    next.students.find(
-      (s) => s.id === data.siswaId
-    );
+  const student = next.students.find((s) => s.id === data.siswaId);
 
   if (!student) {
-    throw new Error(
-      "Siswa tidak ditemukan."
-    );
+    throw new Error("Siswa tidak ditemukan.");
   }
 
-  const jumlah =
-    amount(data.jumlah);
+  const jumlah = amount(data.jumlah);
 
   if (jumlah <= 0) {
-    throw new Error(
-      "Nominal pembayaran harus lebih dari 0."
-    );
+    throw new Error("Nominal pembayaran harus lebih dari 0.");
   }
 
-  if (
-    data.metode === "tutor" &&
-    !data.tutorId
-  ) {
-    throw new Error(
-      "Tutor wajib dipilih."
-    );
+  if (data.metode === "tutor" && !data.tutorId) {
+    throw new Error("Tutor wajib dipilih.");
   }
 
-  const tutor =
-    data.tutorId
-      ? next.tutors.find(
-          (t) => t.id === data.tutorId
-        )
-      : undefined;
+  const tutor = data.tutorId
+    ? next.tutors.find((t) => t.id === data.tutorId)
+    : undefined;
 
-  if (
-    data.metode === "tutor" &&
-    !tutor
-  ) {
-    throw new Error(
-      "Tutor tidak ditemukan."
-    );
+  if (data.metode === "tutor" && !tutor) {
+    throw new Error("Tutor tidak ditemukan.");
   }
 
   next.payments.unshift({
@@ -678,20 +597,12 @@ export function addPaymentTransaction(
 
     tutorNama: tutor?.nama,
 
-    statusTitipan:
-      data.metode === "tutor"
-        ? "pending"
-        : "diserahkan",
+    statusTitipan: data.metode === "tutor" ? "pending" : "diserahkan",
 
-    tanggalSerah:
-      data.metode === "admin"
-        ? data.tanggal
-        : undefined
+    tanggalSerah: data.metode === "admin" ? data.tanggal : undefined
   });
 
-  return saveAndReturn(
-    recalculateAllLedgers(next)
-  );
+  return saveAndReturn(recalculateAllLedgers(next));
 }
 
 /* =========================================================
@@ -709,11 +620,7 @@ export function getTutorDepositBalance(
         p.tutorId === tutorId &&
         p.statusTitipan === "pending"
     )
-    .reduce(
-      (total, p) =>
-        total + amount(p.jumlah),
-      0
-    );
+    .reduce((total, p) => total + amount(p.jumlah), 0);
 }
 
 export function confirmTutorDepositHandover(
@@ -723,20 +630,13 @@ export function confirmTutorDepositHandover(
 ): Database {
   const next = cloneDatabase(db);
 
-  const index =
-    next.payments.findIndex(
-      (p) => p.id === paymentId
-    );
+  const index = next.payments.findIndex((p) => p.id === paymentId);
 
   if (index === -1) return db;
 
-  const payment =
-    next.payments[index];
+  const payment = next.payments[index];
 
-  if (
-    payment.metode !== "tutor" ||
-    payment.statusTitipan === "diserahkan"
-  ) {
+  if (payment.metode !== "tutor" || payment.statusTitipan === "diserahkan") {
     return db;
   }
 
@@ -748,9 +648,7 @@ export function confirmTutorDepositHandover(
     tanggalSerah
   };
 
-  return saveAndReturn(
-    recalculateAllLedgers(next)
-  );
+  return saveAndReturn(recalculateAllLedgers(next));
 }
 
 export function undoTutorDepositHandover(
@@ -759,20 +657,13 @@ export function undoTutorDepositHandover(
 ): Database {
   const next = cloneDatabase(db);
 
-  const index =
-    next.payments.findIndex(
-      (p) => p.id === paymentId
-    );
+  const index = next.payments.findIndex((p) => p.id === paymentId);
 
   if (index === -1) return db;
 
-  const payment =
-    next.payments[index];
+  const payment = next.payments[index];
 
-  if (
-    payment.metode !== "tutor" ||
-    payment.statusTitipan !== "diserahkan"
-  ) {
+  if (payment.metode !== "tutor" || payment.statusTitipan !== "diserahkan") {
     return db;
   }
 
@@ -784,9 +675,7 @@ export function undoTutorDepositHandover(
     tanggalSerah: undefined
   };
 
-  return saveAndReturn(
-    recalculateAllLedgers(next)
-  );
+  return saveAndReturn(recalculateAllLedgers(next));
 }
 
 /* =========================================================
@@ -807,33 +696,20 @@ export function payTutorHonorTransaction(
 ): Database {
   const next = cloneDatabase(db);
 
-  const tutor =
-    next.tutors.find(
-      (t) => t.id === data.tutorId
-    );
+  const tutor = next.tutors.find((t) => t.id === data.tutorId);
 
   if (!tutor) {
-    throw new Error(
-      "Tutor tidak ditemukan."
-    );
+    throw new Error("Tutor tidak ditemukan.");
   }
 
-  const gross =
-    amount(data.jumlah);
+  const gross = amount(data.jumlah);
 
-  const potongan =
-    Math.min(
-      gross,
-      amount(data.potongan)
-    );
+  const potongan = Math.min(gross, amount(data.potongan));
 
-  const netPaid =
-    gross - potongan;
+  const netPaid = gross - potongan;
 
   if (gross <= 0) {
-    throw new Error(
-      "Nominal honor harus lebih dari 0."
-    );
+    throw new Error("Nominal honor harus lebih dari 0.");
   }
 
   next.slips.unshift({
@@ -848,21 +724,16 @@ export function payTutorHonorTransaction(
 
     periode: data.periode,
 
-    catatan:
-      data.catatan ||
-      "Pembayaran Honor Tutor",
+    catatan: data.catatan || "Pembayaran Honor Tutor",
 
     potongan,
 
-    keteranganPotongan:
-      data.keteranganPotongan || "",
+    keteranganPotongan: data.keteranganPotongan || "",
 
     totalHonor: gross
   });
 
-  return saveAndReturn(
-    recalculateAllLedgers(next)
-  );
+  return saveAndReturn(recalculateAllLedgers(next));
 }
 
 /* =========================================================
@@ -879,13 +750,10 @@ export function addGeneralExpenseTransaction(
 ): Database {
   const next = cloneDatabase(db);
 
-  const jumlah =
-    amount(data.jumlah);
+  const jumlah = amount(data.jumlah);
 
   if (jumlah <= 0) {
-    throw new Error(
-      "Nominal pengeluaran harus lebih dari 0."
-    );
+    throw new Error("Nominal pengeluaran harus lebih dari 0.");
   }
 
   next.expenses.unshift({
@@ -898,9 +766,7 @@ export function addGeneralExpenseTransaction(
     jumlah
   });
 
-  return saveAndReturn(
-    recalculateAllLedgers(next)
-  );
+  return saveAndReturn(recalculateAllLedgers(next));
 }
 
 /* =========================================================
@@ -918,13 +784,10 @@ export function addOtherIncomeTransaction(
 ): Database {
   const next = cloneDatabase(db);
 
-  const nominal =
-    amount(data.nominal);
+  const nominal = amount(data.nominal);
 
   if (nominal <= 0) {
-    throw new Error(
-      "Nominal pemasukan harus lebih dari 0."
-    );
+    throw new Error("Nominal pemasukan harus lebih dari 0.");
   }
 
   next.otherIncomes.unshift({
@@ -943,62 +806,223 @@ export function addOtherIncomeTransaction(
     keterangan: data.keterangan
   });
 
-  return saveAndReturn(
-    recalculateAllLedgers(next)
-  );
+  return saveAndReturn(recalculateAllLedgers(next));
+}
+
+/* =========================================================
+   EDIT & HAPUS TRANSAKSI PER ITEM (BARU)
+
+   Semua ledger & kas dibangun ulang dari data sumber
+   (sessions, payments, slips, otherIncomes, expenses) lewat
+   recalculateAllLedgers. Karena itu, edit / hapus TIDAK
+   dilakukan di baris ledger, tetapi di data sumbernya lewat
+   `referensiId`. Hasilnya otomatis konsisten di rekening
+   siswa, honor tutor, buku kas, dan saldo berjalan.
+========================================================= */
+
+/**
+ * Konteks tabel tempat tombol edit ditekan:
+ *  - "siswa" : rekening tagihan (SPP) siswa
+ *  - "honor" : rekening honor tutor
+ *  - "kas"   : buku kas lembaga
+ * Konteks penting untuk sesi (tarif siswa vs honor tutor)
+ * dan slip honor (kotor vs bersih).
+ */
+export type LedgerContext = "siswa" | "honor" | "kas";
+
+export type TransactionSourceKind =
+  | "session"
+  | "payment"
+  | "slip"
+  | "income"
+  | "expense";
+
+export function findTransactionSource(
+  db: Database,
+  referensiId: string
+): TransactionSourceKind | null {
+  if (!referensiId) return null;
+  if (db.sessions.some((x) => x.id === referensiId)) return "session";
+  if (db.payments.some((x) => x.id === referensiId)) return "payment";
+  if (db.slips.some((x) => x.id === referensiId)) return "slip";
+  if (db.otherIncomes.some((x) => x.id === referensiId)) return "income";
+  if (db.expenses.some((x) => x.id === referensiId)) return "expense";
+  return null;
+}
+
+/**
+ * Teks penjelasan dampak penghapusan, untuk dialog konfirmasi.
+ */
+export function describeTransactionDelete(
+  db: Database,
+  referensiId: string
+): string {
+  switch (findTransactionSource(db, referensiId)) {
+    case "session":
+      return "Ini adalah RIWAYAT PERTEMUAN. Menghapusnya akan menghapus tagihan di rekening siswa DAN hak honor di rekening tutor sekaligus.";
+    case "payment":
+      return "Ini adalah PEMBAYARAN SISWA. Menghapusnya akan menghapus catatan di rekening siswa dan Buku Kas (jika sudah masuk kas), termasuk data titipan tutor.";
+    case "slip":
+      return "Ini adalah PEMBAYARAN HONOR (SLIP GAJI). Menghapusnya akan menghapus catatan di rekening honor tutor dan pengeluaran di Buku Kas.";
+    case "income":
+      return "Ini adalah PEMASUKAN LAIN. Menghapusnya akan menghapus catatan di Buku Kas.";
+    case "expense":
+      return "Ini adalah PENGELUARAN OPERASIONAL. Menghapusnya akan menghapus catatan di Buku Kas.";
+    default:
+      return "Data sumber transaksi tidak ditemukan.";
+  }
+}
+
+/**
+ * Ubah nominal satu transaksi berdasarkan referensiId data sumber.
+ */
+export function updateTransactionAmount(
+  db: Database,
+  referensiId: string,
+  jumlahBaru: number,
+  context: LedgerContext
+): Database {
+  const newAmount = amount(jumlahBaru);
+
+  if (newAmount <= 0) {
+    throw new Error("Nominal harus lebih dari 0.");
+  }
+
+  const kind = findTransactionSource(db, referensiId);
+
+  if (!kind) {
+    throw new Error("Data sumber transaksi tidak ditemukan.");
+  }
+
+  const next = cloneDatabase(db);
+  const now = new Date().toISOString();
+
+  if (kind === "session") {
+    const i = next.sessions.findIndex((x) => x.id === referensiId);
+    const s = next.sessions[i];
+
+    next.sessions[i] = {
+      ...s,
+      ...(context === "honor"
+        ? { honorTutorSnapshot: newAmount }
+        : { tarifSiswaSnapshot: newAmount }),
+      lastUpdated: now
+    } as any;
+  }
+
+  if (kind === "payment") {
+    const i = next.payments.findIndex((x) => x.id === referensiId);
+
+    next.payments[i] = {
+      ...next.payments[i],
+      jumlah: newAmount,
+      lastUpdated: now
+    } as any;
+  }
+
+  if (kind === "slip") {
+    const i = next.slips.findIndex((x) => x.id === referensiId);
+    const slip = next.slips[i];
+    const potongan = amount(slip.potongan);
+
+    // Di rekening honor nominal = honor kotor (sebelum potongan).
+    // Di buku kas nominal = honor bersih (yang benar-benar keluar).
+    const gross = context === "kas" ? newAmount + potongan : newAmount;
+
+    if (potongan > gross) {
+      throw new Error(
+        `Nominal tidak boleh lebih kecil dari potongan (${formatRupiah(potongan)}).`
+      );
+    }
+
+    next.slips[i] = {
+      ...slip,
+      totalHonor: gross,
+      jumlah: gross - potongan,
+      lastUpdated: now
+    } as any;
+  }
+
+  if (kind === "income") {
+    const i = next.otherIncomes.findIndex((x) => x.id === referensiId);
+
+    next.otherIncomes[i] = {
+      ...next.otherIncomes[i],
+      nominal: newAmount,
+      jumlah: newAmount,
+      lastUpdated: now
+    } as any;
+  }
+
+  if (kind === "expense") {
+    const i = next.expenses.findIndex((x) => x.id === referensiId);
+
+    next.expenses[i] = {
+      ...next.expenses[i],
+      jumlah: newAmount,
+      lastUpdated: now
+    } as any;
+  }
+
+  return saveAndReturn(recalculateAllLedgers(next));
+}
+
+/**
+ * Hapus satu transaksi berdasarkan referensiId data sumber.
+ * ID dicatat di deletedIds supaya tidak "hidup lagi" saat sinkronisasi.
+ */
+export function deleteTransactionBySource(
+  db: Database,
+  referensiId: string
+): Database {
+  const kind = findTransactionSource(db, referensiId);
+
+  if (!kind) return db;
+
+  switch (kind) {
+    case "session":
+      return deleteSessionTransaction(db, referensiId);
+    case "payment":
+      return deleteFromDatabase(db, "payments", referensiId);
+    case "slip":
+      return deleteFromDatabase(db, "slips", referensiId);
+    case "income":
+      return deleteFromDatabase(db, "otherIncomes", referensiId);
+    case "expense":
+      return deleteFromDatabase(db, "expenses", referensiId);
+    default:
+      return db;
+  }
 }
 
 /* =========================================================
    BALANCES
 ========================================================= */
 
-export function getStudentBalance(
-  db: Database,
-  studentId: string
-): number {
+export function getStudentBalance(db: Database, studentId: string): number {
   return db.studentLedger
-    .filter(
-      (tx) =>
-        tx.siswaId === studentId
-    )
+    .filter((tx) => tx.siswaId === studentId)
     .reduce(
       (total, tx) =>
-        total +
-        (tx.tipe === "debit"
-          ? amount(tx.jumlah)
-          : -amount(tx.jumlah)),
+        total + (tx.tipe === "debit" ? amount(tx.jumlah) : -amount(tx.jumlah)),
       0
     );
 }
 
-export function getTutorHonorBalance(
-  db: Database,
-  tutorId: string
-): number {
+export function getTutorHonorBalance(db: Database, tutorId: string): number {
   return db.tutorLedger
-    .filter(
-      (tx) =>
-        tx.tutorId === tutorId
-    )
+    .filter((tx) => tx.tutorId === tutorId)
     .reduce(
       (total, tx) =>
-        total +
-        (tx.tipe === "kredit"
-          ? amount(tx.jumlah)
-          : -amount(tx.jumlah)),
+        total + (tx.tipe === "kredit" ? amount(tx.jumlah) : -amount(tx.jumlah)),
       0
     );
 }
 
-export function getKasLembagaBalance(
-  db: Database
-): number {
+export function getKasLembagaBalance(db: Database): number {
   return db.kas.reduce(
     (total, tx) =>
-      total +
-      (tx.tipe === "masuk"
-        ? amount(tx.jumlah)
-        : -amount(tx.jumlah)),
+      total + (tx.tipe === "masuk" ? amount(tx.jumlah) : -amount(tx.jumlah)),
     0
   );
 }
@@ -1007,114 +1031,70 @@ export function getKasLembagaBalance(
    DATE FILTER
 ========================================================= */
 
-export function filterByDateRange<
-  T extends { tanggal: string }
->(
+export function filterByDateRange<T extends { tanggal: string }>(
   items: T[],
-  rangeType:
-    | "hari"
-    | "minggu"
-    | "bulan"
-    | "tahun"
-    | "custom",
+  rangeType: "hari" | "minggu" | "bulan" | "tahun" | "custom",
   customStart?: string,
   customEnd?: string,
-  baseDate: string =
-    getTodayDateString()
+  baseDate: string = getTodayDateString()
 ): T[] {
-  const base =
-    new Date(`${baseDate}T00:00:00`);
+  const base = new Date(`${baseDate}T00:00:00`);
 
   let startStr = "";
   let endStr = "";
 
-  const pad = (n: number) =>
-    String(n).padStart(2, "0");
+  const pad = (n: number) => String(n).padStart(2, "0");
 
   if (rangeType === "hari") {
     startStr = baseDate;
     endStr = baseDate;
-  }
-
-  else if (rangeType === "minggu") {
+  } else if (rangeType === "minggu") {
     const day = base.getDay();
 
-    const diff =
-      base.getDate() -
-      day +
-      (day === 0 ? -6 : 1);
+    const diff = base.getDate() - day + (day === 0 ? -6 : 1);
 
-    const monday =
-      new Date(base);
+    const monday = new Date(base);
 
     monday.setDate(diff);
 
-    const sunday =
-      new Date(monday);
+    const sunday = new Date(monday);
 
-    sunday.setDate(
-      monday.getDate() + 6
-    );
+    sunday.setDate(monday.getDate() + 6);
 
-    startStr =
-      `${monday.getFullYear()}-${pad(
-        monday.getMonth() + 1
-      )}-${pad(monday.getDate())}`;
+    startStr = `${monday.getFullYear()}-${pad(monday.getMonth() + 1)}-${pad(
+      monday.getDate()
+    )}`;
 
-    endStr =
-      `${sunday.getFullYear()}-${pad(
-        sunday.getMonth() + 1
-      )}-${pad(sunday.getDate())}`;
-  }
+    endStr = `${sunday.getFullYear()}-${pad(sunday.getMonth() + 1)}-${pad(
+      sunday.getDate()
+    )}`;
+  } else if (rangeType === "bulan") {
+    const year = base.getFullYear();
 
-  else if (rangeType === "bulan") {
-    const year =
-      base.getFullYear();
+    const month = base.getMonth();
 
-    const month =
-      base.getMonth();
+    const lastDay = new Date(year, month + 1, 0).getDate();
 
-    const lastDay =
-      new Date(
-        year,
-        month + 1,
-        0
-      ).getDate();
+    startStr = `${year}-${pad(month + 1)}-01`;
 
-    startStr =
-      `${year}-${pad(month + 1)}-01`;
+    endStr = `${year}-${pad(month + 1)}-${pad(lastDay)}`;
+  } else if (rangeType === "tahun") {
+    startStr = `${base.getFullYear()}-01-01`;
 
-    endStr =
-      `${year}-${pad(month + 1)}-${pad(
-        lastDay
-      )}`;
-  }
-
-  else if (rangeType === "tahun") {
-    startStr =
-      `${base.getFullYear()}-01-01`;
-
-    endStr =
-      `${base.getFullYear()}-12-31`;
-  }
-
-  else if (rangeType === "custom") {
+    endStr = `${base.getFullYear()}-12-31`;
+  } else if (rangeType === "custom") {
     if (!customStart || !customEnd) {
       return items;
     }
 
     startStr = customStart;
     endStr = customEnd;
-  }
-
-  else {
+  } else {
     return items;
   }
 
   return items.filter(
-    (item) =>
-      item.tanggal >= startStr &&
-      item.tanggal <= endStr
+    (item) => item.tanggal >= startStr && item.tanggal <= endStr
   );
 }
 
@@ -1135,64 +1115,36 @@ export function submitAttendanceReport(
 ): Database {
   const next = cloneDatabase(db);
 
-  const tutor =
-    next.tutors.find(
-      (t) => t.id === data.tutorId
-    );
+  const tutor = next.tutors.find((t) => t.id === data.tutorId);
+  const student = next.students.find((s) => s.id === data.siswaId);
+  const program = next.programs.find((p) => p.id === data.programId);
 
-  const student =
-    next.students.find(
-      (s) => s.id === data.siswaId
-    );
-
-  const program =
-    next.programs.find(
-      (p) => p.id === data.programId
-    );
-
-  if (
-    !tutor ||
-    !student ||
-    !program
-  ) {
-    throw new Error(
-      "Data tutor, siswa, atau program tidak lengkap."
-    );
+  if (!tutor || !student || !program) {
+    throw new Error("Data tutor, siswa, atau program tidak lengkap.");
   }
 
-  const duplicate =
-    next.attendanceReports.some(
-      (r) =>
-        r.tanggal === data.tanggal &&
-        r.tutorId === data.tutorId &&
-        r.siswaId === data.siswaId &&
-        r.programId === data.programId &&
-        (
-          r.status === "pending" ||
-          r.status === "diproses"
-        )
-    );
+  const duplicate = next.attendanceReports.some(
+    (r) =>
+      r.tanggal === data.tanggal &&
+      r.tutorId === data.tutorId &&
+      r.siswaId === data.siswaId &&
+      r.programId === data.programId &&
+      (r.status === "pending" || r.status === "diproses")
+  );
 
   if (duplicate) {
-    throw new Error(
-      "Laporan kehadiran untuk sesi tersebut sudah ada."
-    );
+    throw new Error("Laporan kehadiran untuk sesi tersebut sudah ada.");
   }
 
   if (
-    checkDuplicateSession(
-      next,
-      {
-        tanggal: data.tanggal,
-        siswaId: data.siswaId,
-        tutorId: data.tutorId,
-        programId: data.programId
-      }
-    )
+    checkDuplicateSession(next, {
+      tanggal: data.tanggal,
+      siswaId: data.siswaId,
+      tutorId: data.tutorId,
+      programId: data.programId
+    })
   ) {
-    throw new Error(
-      "Sesi untuk tanggal tersebut sudah tercatat."
-    );
+    throw new Error("Sesi untuk tanggal tersebut sudah tercatat.");
   }
 
   next.attendanceReports.unshift({
@@ -1211,14 +1163,12 @@ export function submitAttendanceReport(
 
     fotoJurnal: data.fotoJurnal,
 
-    keterangan:
-      data.keterangan,
+    keterangan: data.keterangan,
 
     status: "pending"
   });
 
-  next.lastUpdated =
-    new Date().toISOString();
+  next.lastUpdated = new Date().toISOString();
 
   return saveAndReturn(next);
 }
@@ -1232,20 +1182,15 @@ export function verifyAttendanceReport(
   reportId: string,
   status: "setuju" | "tolak",
   catatanAdmin?: string,
-  tanggalProses: string =
-    getTodayDateString()
+  tanggalProses: string = getTodayDateString()
 ): Database {
   const next = cloneDatabase(db);
 
-  const index =
-    next.attendanceReports.findIndex(
-      (r) => r.id === reportId
-    );
+  const index = next.attendanceReports.findIndex((r) => r.id === reportId);
 
   if (index === -1) return db;
 
-  const report =
-    next.attendanceReports[index];
+  const report = next.attendanceReports[index];
 
   if (report.status !== "pending") {
     return db;
@@ -1266,55 +1211,33 @@ export function verifyAttendanceReport(
       catatanAdmin
     };
 
-    return saveAndReturn(
-      recalculateAllLedgers(next)
-    );
+    return saveAndReturn(recalculateAllLedgers(next));
   }
 
   /* =========================
      SETUJU
   ========================= */
 
-  let session =
-    next.sessions.find(
-      (s) =>
-        s.tanggal === report.tanggal &&
-        s.siswaId === report.siswaId &&
-        s.tutorId === report.tutorId &&
-        s.programId === report.programId
-    );
+  let session = next.sessions.find(
+    (s) =>
+      s.tanggal === report.tanggal &&
+      s.siswaId === report.siswaId &&
+      s.tutorId === report.tutorId &&
+      s.programId === report.programId
+  );
 
   if (!session) {
-    const student =
-      next.students.find(
-        (s) =>
-          s.id === report.siswaId
-      );
+    const student = next.students.find((s) => s.id === report.siswaId);
 
-    const tutor =
-      next.tutors.find(
-        (t) =>
-          t.id === report.tutorId
-      );
+    const tutor = next.tutors.find((t) => t.id === report.tutorId);
 
-    const program =
-      next.programs.find(
-        (p) =>
-          p.id === report.programId
-      );
+    const program = next.programs.find((p) => p.id === report.programId);
 
-    if (
-      !student ||
-      !tutor ||
-      !program
-    ) {
-      throw new Error(
-        "Data pendukung tidak lengkap."
-      );
+    if (!student || !tutor || !program) {
+      throw new Error("Data pendukung tidak lengkap.");
     }
 
-    const newSession:
-      RiwayatPertemuan = {
+    const newSession: RiwayatPertemuan = {
       id: generateUniqueId("RP"),
 
       tanggal: report.tanggal,
@@ -1328,32 +1251,21 @@ export function verifyAttendanceReport(
       programId: program.id,
       programNama: program.nama,
 
-      tarifSiswaSnapshot:
-        amount(program.tarifSiswa),
+      tarifSiswaSnapshot: amount(program.tarifSiswa),
 
-      honorTutorSnapshot:
-        amount(program.honorTutor),
+      honorTutorSnapshot: amount(program.honorTutor),
 
-      catatan:
-        `Verifikasi LPK [${report.id}]${
-          report.keterangan
-            ? ` - ${report.keterangan}`
-            : ""
-        }`
+      catatan: `Verifikasi LPK [${report.id}]${
+        report.keterangan ? ` - ${report.keterangan}` : ""
+      }`
     };
 
-    next.sessions.unshift(
-      newSession
-    );
+    next.sessions.unshift(newSession);
 
     session = newSession;
 
     if (!student.programId) {
-      const sIdx =
-        next.students.findIndex(
-          (s) =>
-            s.id === student.id
-        );
+      const sIdx = next.students.findIndex((s) => s.id === student.id);
 
       if (sIdx !== -1) {
         next.students[sIdx] = {
@@ -1365,9 +1277,7 @@ export function verifyAttendanceReport(
   }
 
   if (!session) {
-    throw new Error(
-      "Gagal memproses sesi absensi."
-    );
+    throw new Error("Gagal memproses sesi absensi.");
   }
 
   next.attendanceReports[index] = {
@@ -1380,12 +1290,9 @@ export function verifyAttendanceReport(
     catatanAdmin
   };
 
-  next.lastUpdated =
-    new Date().toISOString();
+  next.lastUpdated = new Date().toISOString();
 
-  return saveAndReturn(
-    recalculateAllLedgers(next)
-  );
+  return saveAndReturn(recalculateAllLedgers(next));
 }
 
 /* =========================================================
@@ -1398,22 +1305,17 @@ export function undoVerifyAttendanceReport(
 ): Database {
   const next = cloneDatabase(db);
 
-  const index =
-    next.attendanceReports.findIndex(
-      (r) => r.id === reportId
-    );
+  const index = next.attendanceReports.findIndex((r) => r.id === reportId);
 
   if (index === -1) return db;
 
-  const report =
-    next.attendanceReports[index];
+  const report = next.attendanceReports[index];
 
   if (report.status === "pending") {
     return db;
   }
 
-  const oldStatus =
-    report.status;
+  const oldStatus = report.status;
 
   next.attendanceReports[index] = {
     ...report,
@@ -1426,35 +1328,24 @@ export function undoVerifyAttendanceReport(
   };
 
   if (oldStatus === "setuju") {
-    const sessionIndex =
-      next.sessions.findIndex(
-        (s) =>
-          s.tanggal === report.tanggal &&
-          s.siswaId === report.siswaId &&
-          s.tutorId === report.tutorId &&
-          s.programId === report.programId
-      );
+    const sessionIndex = next.sessions.findIndex(
+      (s) =>
+        s.tanggal === report.tanggal &&
+        s.siswaId === report.siswaId &&
+        s.tutorId === report.tutorId &&
+        s.programId === report.programId
+    );
 
     if (sessionIndex !== -1) {
-      const sessionToDelete =
-        next.sessions[sessionIndex];
+      const sessionToDelete = next.sessions[sessionIndex];
 
-      next.sessions.splice(
-        sessionIndex,
-        1
-      );
+      next.sessions.splice(sessionIndex, 1);
 
-      next.deletedIds =
-        uniqueStrings([
-          ...next.deletedIds,
-          sessionToDelete.id
-        ]);
+      next.deletedIds = uniqueStrings([...next.deletedIds, sessionToDelete.id]);
     }
   }
 
-  return saveAndReturn(
-    recalculateAllLedgers(next)
-  );
+  return saveAndReturn(recalculateAllLedgers(next));
 }
 
 /* =========================================================
@@ -1467,29 +1358,15 @@ export function deleteSessionTransaction(
 ): Database {
   const next = cloneDatabase(db);
 
-  const session =
-    next.sessions.find(
-      (item) =>
-        item.id === sessionId
-    );
+  const session = next.sessions.find((item) => item.id === sessionId);
 
   if (!session) return db;
 
-  next.sessions =
-    next.sessions.filter(
-      (item) =>
-        item.id !== sessionId
-    );
+  next.sessions = next.sessions.filter((item) => item.id !== sessionId);
 
-  next.deletedIds =
-    uniqueStrings([
-      ...next.deletedIds,
-      sessionId
-    ]);
+  next.deletedIds = uniqueStrings([...next.deletedIds, sessionId]);
 
-  return saveAndReturn(
-    recalculateAllLedgers(next)
-  );
+  return saveAndReturn(recalculateAllLedgers(next));
 }
 
 /* =========================================================
@@ -1500,51 +1377,33 @@ export function deleteAttendanceReport(
   db: Database,
   reportId: string
 ): Database {
-  let next =
-    cloneDatabase(db);
+  let next = cloneDatabase(db);
 
-  const report =
-    next.attendanceReports.find(
-      (item) =>
-        item.id === reportId
-    );
+  const report = next.attendanceReports.find((item) => item.id === reportId);
 
   if (!report) return db;
 
   if (report.status === "setuju") {
-    const session =
-      next.sessions.find(
-        (s) =>
-          s.tanggal === report.tanggal &&
-          s.siswaId === report.siswaId &&
-          s.tutorId === report.tutorId &&
-          s.programId === report.programId
-      );
+    const session = next.sessions.find(
+      (s) =>
+        s.tanggal === report.tanggal &&
+        s.siswaId === report.siswaId &&
+        s.tutorId === report.tutorId &&
+        s.programId === report.programId
+    );
 
     if (session) {
-      next =
-        deleteSessionTransaction(
-          next,
-          session.id
-        );
+      next = deleteSessionTransaction(next, session.id);
     }
   }
 
-  next.attendanceReports =
-    next.attendanceReports.filter(
-      (item) =>
-        item.id !== reportId
-    );
-
-  next.deletedIds =
-    uniqueStrings([
-      ...next.deletedIds,
-      reportId
-    ]);
-
-  return saveAndReturn(
-    recalculateAllLedgers(next)
+  next.attendanceReports = next.attendanceReports.filter(
+    (item) => item.id !== reportId
   );
+
+  next.deletedIds = uniqueStrings([...next.deletedIds, reportId]);
+
+  return saveAndReturn(recalculateAllLedgers(next));
 }
 
 /* =========================================================
@@ -1556,42 +1415,24 @@ export function deleteFromDatabase(
   collection: keyof Database,
   id: string
 ): Database {
-  const next =
-    cloneDatabase(db);
+  const next = cloneDatabase(db);
 
-  const current =
-    (next as any)[collection];
+  const current = (next as any)[collection];
 
   if (!Array.isArray(current)) {
     return next;
   }
 
-  (next as any)[collection] =
-    current.filter(
-      (item: any) =>
-        item?.id !== id
-    );
+  (next as any)[collection] = current.filter((item: any) => item?.id !== id);
 
-  next.deletedIds =
-    uniqueStrings([
-      ...next.deletedIds,
-      id
-    ]);
+  next.deletedIds = uniqueStrings([...next.deletedIds, id]);
 
   if (
-    [
-      "sessions",
-      "payments",
-      "slips",
-      "otherIncomes",
-      "expenses"
-    ].includes(
+    ["sessions", "payments", "slips", "otherIncomes", "expenses"].includes(
       String(collection)
     )
   ) {
-    return saveAndReturn(
-      recalculateAllLedgers(next)
-    );
+    return saveAndReturn(recalculateAllLedgers(next));
   }
 
   return saveDatabaseOnly(next);
@@ -1601,17 +1442,11 @@ export function deleteFromDatabase(
    MERGE HELPERS
 ========================================================= */
 
-function mergeArrayById<
-  T extends {
-    id: string;
-    lastUpdated?: string;
-  }
->(
+function mergeArrayById<T extends { id: string; lastUpdated?: string }>(
   local: T[] = [],
   remote: T[] = []
 ): T[] {
-  const map =
-    new Map<string, T>();
+  const map = new Map<string, T>();
 
   for (const item of local) {
     if (item?.id) {
@@ -1622,41 +1457,29 @@ function mergeArrayById<
   for (const item of remote) {
     if (!item?.id) continue;
 
-    const previous =
-      map.get(item.id);
+    const previous = map.get(item.id);
 
     if (!previous) {
       map.set(item.id, item);
     } else {
-      const localTime =
-        previous.lastUpdated
-          ? new Date(
-              previous.lastUpdated
-            ).getTime()
-          : 0;
+      const localTime = previous.lastUpdated
+        ? new Date(previous.lastUpdated).getTime()
+        : 0;
 
-      const remoteTime =
-        item.lastUpdated
-          ? new Date(
-              item.lastUpdated
-            ).getTime()
-          : 1;
+      const remoteTime = item.lastUpdated
+        ? new Date(item.lastUpdated).getTime()
+        : 1;
 
       if (remoteTime >= localTime) {
-        map.set(
-          item.id,
-          {
-            ...previous,
-            ...item
-          }
-        );
+        map.set(item.id, {
+          ...previous,
+          ...item
+        });
       }
     }
   }
 
-  return Array.from(
-    map.values()
-  );
+  return Array.from(map.values());
 }
 
 /* =========================================================
@@ -1667,27 +1490,18 @@ function mergeSessions(
   local: RiwayatPertemuan[],
   remote: RiwayatPertemuan[]
 ): RiwayatPertemuan[] {
-  const merged =
-    mergeArrayById(
-      local,
-      remote
-    );
+  const merged = mergeArrayById(local, remote);
 
-  const result:
-    RiwayatPertemuan[] = [];
+  const result: RiwayatPertemuan[] = [];
 
-  const seenBusiness =
-    new Set<string>();
+  const seenBusiness = new Set<string>();
 
   for (const item of merged) {
     if (!item?.id) continue;
 
-    const key = [
-      item.tanggal,
-      item.tutorId,
-      item.siswaId,
-      item.programId
-    ].join("|");
+    const key = [item.tanggal, item.tutorId, item.siswaId, item.programId].join(
+      "|"
+    );
 
     if (seenBusiness.has(key)) {
       continue;
@@ -1709,27 +1523,18 @@ function mergeAttendance(
   local: AttendanceRecord[],
   remote: AttendanceRecord[]
 ): AttendanceRecord[] {
-  const merged =
-    mergeArrayById(
-      local,
-      remote
-    );
+  const merged = mergeArrayById(local, remote);
 
-  const result:
-    AttendanceRecord[] = [];
+  const result: AttendanceRecord[] = [];
 
-  const seenBusiness =
-    new Set<string>();
+  const seenBusiness = new Set<string>();
 
   for (const item of merged) {
     if (!item?.id) continue;
 
-    const key = [
-      item.tanggal,
-      item.tutorId,
-      item.siswaId,
-      item.programId
-    ].join("|");
+    const key = [item.tanggal, item.tutorId, item.siswaId, item.programId].join(
+      "|"
+    );
 
     if (seenBusiness.has(key)) {
       continue;
@@ -1748,124 +1553,46 @@ function mergeAttendance(
 ========================================================= */
 
 export function mergeDatabases(
-  localInput:
-    | Database
-    | null
-    | undefined,
-  remoteInput:
-    | Database
-    | null
-    | undefined
+  localInput: Database | null | undefined,
+  remoteInput: Database | null | undefined
 ): Database {
-  const local =
-    ensureDatabaseDefaults(
-      localInput
-    );
+  const local = ensureDatabaseDefaults(localInput);
 
-  const remote =
-    ensureDatabaseDefaults(
-      remoteInput
-    );
+  const remote = ensureDatabaseDefaults(remoteInput);
 
-  const deletedIds =
-    uniqueStrings([
-      ...local.deletedIds,
-      ...remote.deletedIds
-    ]);
+  const deletedIds = uniqueStrings([...local.deletedIds, ...remote.deletedIds]);
 
-  const deletedSet =
-    new Set(deletedIds);
+  const deletedSet = new Set(deletedIds);
 
-  const filterDeleted = <
-    T extends { id: string }
-  >(
-    items: T[]
-  ): T[] =>
-    items.filter(
-      (item) =>
-        Boolean(item?.id) &&
-        !deletedSet.has(item.id)
-    );
+  const filterDeleted = <T extends { id: string }>(items: T[]): T[] =>
+    items.filter((item) => Boolean(item?.id) && !deletedSet.has(item.id));
 
-  const merged:
-    Database = {
-    programs: filterDeleted(
-      mergeArrayById(
-        local.programs,
-        remote.programs
-      )
-    ),
+  const merged: Database = {
+    programs: filterDeleted(mergeArrayById(local.programs, remote.programs)),
 
-    students: filterDeleted(
-      mergeArrayById(
-        local.students,
-        remote.students
-      )
-    ),
+    students: filterDeleted(mergeArrayById(local.students, remote.students)),
 
-    tutors: filterDeleted(
-      mergeArrayById(
-        local.tutors,
-        remote.tutors
-      )
-    ),
+    tutors: filterDeleted(mergeArrayById(local.tutors, remote.tutors)),
 
-    sessions: filterDeleted(
-      mergeSessions(
-        local.sessions,
-        remote.sessions
-      )
-    ),
+    sessions: filterDeleted(mergeSessions(local.sessions, remote.sessions)),
 
-    payments: filterDeleted(
-      mergeArrayById(
-        local.payments,
-        remote.payments
-      )
-    ),
+    payments: filterDeleted(mergeArrayById(local.payments, remote.payments)),
 
-    slips: filterDeleted(
-      mergeArrayById(
-        local.slips,
-        remote.slips
-      )
-    ),
+    slips: filterDeleted(mergeArrayById(local.slips, remote.slips)),
 
     otherIncomes: filterDeleted(
-      mergeArrayById(
-        local.otherIncomes,
-        remote.otherIncomes
-      )
+      mergeArrayById(local.otherIncomes, remote.otherIncomes)
     ),
 
-    expenses: filterDeleted(
-      mergeArrayById(
-        local.expenses,
-        remote.expenses
-      )
+    expenses: filterDeleted(mergeArrayById(local.expenses, remote.expenses)),
+
+    attendanceReports: filterDeleted(
+      mergeAttendance(local.attendanceReports, remote.attendanceReports)
     ),
 
-    attendanceReports:
-      filterDeleted(
-        mergeAttendance(
-          local.attendanceReports,
-          remote.attendanceReports
-        )
-      ),
+    schedules: filterDeleted(mergeArrayById(local.schedules, remote.schedules)),
 
-    schedules: filterDeleted(
-      mergeArrayById(
-        local.schedules,
-        remote.schedules
-      )
-    ),
-
-    raports: filterDeleted(
-      mergeArrayById(
-        local.raports,
-        remote.raports
-      )
-    ),
+    raports: filterDeleted(mergeArrayById(local.raports, remote.raports)),
 
     studentLedger: [],
 
@@ -1874,35 +1601,27 @@ export function mergeDatabases(
     kas: [],
 
     broadcastMessage:
-      remote.broadcastMessage ||
-      local.broadcastMessage ||
-      DEFAULT_BROADCAST,
+      remote.broadcastMessage || local.broadcastMessage || DEFAULT_BROADCAST,
 
-    adminPassword:
-      remote.adminPassword ||
-      local.adminPassword ||
-      undefined,
+    adminPassword: remote.adminPassword || local.adminPassword || undefined,
+
+    perpustakaanPassword:
+      remote.perpustakaanPassword || local.perpustakaanPassword || undefined,
 
     deletedIds,
 
-    lastUpdated:
-      new Date().toISOString()
+    lastUpdated: new Date().toISOString()
   };
 
-  return recalculateAllLedgers(
-    merged
-  );
+  return recalculateAllLedgers(merged);
 }
 
 /* =========================================================
    LEDGER REBUILD
 ========================================================= */
 
-export function recalculateAllLedgers(
-  input: Database
-): Database {
-  const db =
-    cloneDatabase(input);
+export function recalculateAllLedgers(input: Database): Database {
+  const db = cloneDatabase(input);
 
   db.studentLedger = [];
   db.tutorLedger = [];
@@ -1912,44 +1631,32 @@ export function recalculateAllLedgers(
      SESSIONS
   ======================================================= */
 
-  const sessions =
-    deduplicateSessions(
-      db.sessions
-    );
+  const sessions = deduplicateSessions(db.sessions);
 
   for (const session of sessions) {
-    const tarifSiswa =
-      amount(
-        session.tarifSiswaSnapshot
-      );
+    const tarifSiswa = amount(session.tarifSiswaSnapshot);
 
-    const honorTutor =
-      amount(
-        session.honorTutorSnapshot
-      );
+    const honorTutor = amount(session.honorTutorSnapshot);
 
     if (tarifSiswa > 0) {
       db.studentLedger.push({
         id: `TXS-${session.id}`,
 
-        tanggal:
-          session.tanggal,
+        tanggal: session.tanggal,
 
-        siswaId:
-          session.siswaId,
+        siswaId: session.siswaId,
 
         tipe: "debit",
 
-        keterangan:
-          `Riwayat Pertemuan [${session.id}] - ${session.siswaNama} - ${session.programNama}`,
+        keterangan: `Riwayat Pertemuan [${shortId(session.id)}] - ${
+          session.siswaNama
+        } - ${session.programNama}`,
 
-        jumlah:
-          tarifSiswa,
+        jumlah: tarifSiswa,
 
         saldoBerjalan: 0,
 
-        referensiId:
-          session.id
+        referensiId: session.id
       });
     }
 
@@ -1957,24 +1664,21 @@ export function recalculateAllLedgers(
       db.tutorLedger.push({
         id: `TXT-${session.id}`,
 
-        tanggal:
-          session.tanggal,
+        tanggal: session.tanggal,
 
-        tutorId:
-          session.tutorId,
+        tutorId: session.tutorId,
 
         tipe: "kredit",
 
-        keterangan:
-          `Riwayat Pertemuan [${session.id}] - Siswa: ${session.siswaNama} - ${session.programNama}`,
+        keterangan: `Riwayat Pertemuan [${shortId(session.id)}] - Siswa: ${
+          session.siswaNama
+        } - ${session.programNama}`,
 
-        jumlah:
-          honorTutor,
+        jumlah: honorTutor,
 
         saldoBerjalan: 0,
 
-        referensiId:
-          session.id
+        referensiId: session.id
       });
     }
   }
@@ -1983,59 +1687,44 @@ export function recalculateAllLedgers(
      PAYMENTS
   ======================================================= */
 
-  const payments =
-    deduplicatePayments(
-      db.payments
-    );
+  const payments = deduplicatePayments(db.payments);
 
   for (const payment of payments) {
-    const jumlah =
-      amount(payment.jumlah);
+    const jumlah = amount(payment.jumlah);
 
     if (jumlah <= 0) continue;
 
-    const isAdmin =
-      payment.metode === "admin";
+    const isAdmin = payment.metode === "admin";
 
     const isTutorHanded =
-      payment.metode === "tutor" &&
-      payment.statusTitipan ===
-        "diserahkan";
+      payment.metode === "tutor" && payment.statusTitipan === "diserahkan";
 
-    if (
-      !isAdmin &&
-      !isTutorHanded
-    ) {
+    if (!isAdmin && !isTutorHanded) {
       continue;
     }
 
-    const tgl =
-      payment.tanggalSerah ||
-      payment.tanggal;
+    const tgl = payment.tanggalSerah || payment.tanggal;
 
     db.studentLedger.push({
       id: `TXS-${payment.id}`,
 
       tanggal: tgl,
 
-      siswaId:
-        payment.siswaId,
+      siswaId: payment.siswaId,
 
       tipe: "kredit",
 
-      keterangan:
-        isAdmin
-          ? `Pembayaran Siswa [${payment.id}] - Ke Admin`
-          : `Penerimaan Pembayaran via Tutor [${payment.id}] - ${
-              payment.tutorNama || "-"
-            }`,
+      keterangan: isAdmin
+        ? `Pembayaran Siswa [${shortId(payment.id)}] - Ke Admin`
+        : `Penerimaan Pembayaran via Tutor [${shortId(payment.id)}] - ${
+            payment.tutorNama || "-"
+          }`,
 
       jumlah,
 
       saldoBerjalan: 0,
 
-      referensiId:
-        payment.id
+      referensiId: payment.id
     });
 
     db.kas.push({
@@ -2045,19 +1734,17 @@ export function recalculateAllLedgers(
 
       tipe: "masuk",
 
-      keterangan:
-        isAdmin
-          ? `Pembayaran Siswa [${payment.id}] - ${payment.siswaNama}`
-          : `Titipan Tutor [${payment.id}] - ${
-              payment.tutorNama || "-"
-            } (Siswa: ${payment.siswaNama})`,
+      keterangan: isAdmin
+        ? `Pembayaran Siswa [${shortId(payment.id)}] - ${payment.siswaNama}`
+        : `Titipan Tutor [${shortId(payment.id)}] - ${
+            payment.tutorNama || "-"
+          } (Siswa: ${payment.siswaNama})`,
 
       jumlah,
 
       saldoBerjalan: 0,
 
-      referensiId:
-        payment.id
+      referensiId: payment.id
     });
   }
 
@@ -2065,29 +1752,14 @@ export function recalculateAllLedgers(
      TUTOR SLIPS
   ======================================================= */
 
-  const slips =
-    deduplicateSlips(
-      db.slips
-    );
+  const slips = deduplicateSlips(db.slips);
 
   for (const slip of slips) {
-    const gross =
-      amount(
-        slip.totalHonor ??
-          slip.jumlah
-      );
+    const gross = amount(slip.totalHonor ?? slip.jumlah);
 
-    const potongan =
-      Math.min(
-        gross,
-        amount(slip.potongan)
-      );
+    const potongan = Math.min(gross, amount(slip.potongan));
 
-    const net =
-      Math.max(
-        0,
-        gross - potongan
-      );
+    const net = Math.max(0, gross - potongan);
 
     if (gross <= 0) continue;
 
@@ -2098,20 +1770,18 @@ export function recalculateAllLedgers(
     db.tutorLedger.push({
       id: `TXT-${slip.id}`,
 
-      tanggal:
-        slip.tanggal,
+      tanggal: slip.tanggal,
 
-      tutorId:
-        slip.tutorId,
+      tutorId: slip.tutorId,
 
       tipe: "debit",
 
       keterangan:
         potongan > 0
-          ? `Honor [${slip.id}] - Periode ${slip.periode} (Potongan: ${formatRupiah(
-              potongan
-            )})`
-          : `Honor [${slip.id}] - Periode ${slip.periode}`,
+          ? `Honor [${shortId(slip.id)}] - Periode ${
+              slip.periode
+            } (Potongan: ${formatRupiah(potongan)})`
+          : `Honor [${shortId(slip.id)}] - Periode ${slip.periode}`,
 
       /*
        * Yang dikurangi dari saldo honor
@@ -2122,8 +1792,7 @@ export function recalculateAllLedgers(
 
       saldoBerjalan: 0,
 
-      referensiId:
-        slip.id
+      referensiId: slip.id
     });
 
     /*
@@ -2134,26 +1803,22 @@ export function recalculateAllLedgers(
       db.kas.push({
         id: `KAS-${slip.id}`,
 
-        tanggal:
-          slip.tanggal,
+        tanggal: slip.tanggal,
 
         tipe: "keluar",
 
         keterangan:
           potongan > 0
-            ? `Honor Tutor [${slip.id}] - ${slip.tutorNama} (Bersih: ${formatRupiah(
-                net
-              )}, Pot: ${formatRupiah(
-                potongan
-              )})`
-            : `Honor Tutor [${slip.id}] - ${slip.tutorNama}`,
+            ? `Honor Tutor [${shortId(slip.id)}] - ${
+                slip.tutorNama
+              } (Bersih: ${formatRupiah(net)}, Pot: ${formatRupiah(potongan)})`
+            : `Honor Tutor [${shortId(slip.id)}] - ${slip.tutorNama}`,
 
         jumlah: net,
 
         saldoBerjalan: 0,
 
-        referensiId:
-          slip.id
+        referensiId: slip.id
       });
     }
   }
@@ -2162,45 +1827,29 @@ export function recalculateAllLedgers(
      OTHER INCOMES
   ======================================================= */
 
-  const incomes =
-    deduplicateById(
-      db.otherIncomes
-    );
+  const incomes = deduplicateById(db.otherIncomes);
 
   for (const income of incomes) {
-    const nominal =
-      amount(
-        income.nominal ??
-          income.jumlah
-      );
+    const nominal = amount(income.nominal ?? income.jumlah);
 
     if (nominal <= 0) continue;
 
     db.kas.push({
       id: `KAS-${income.id}`,
 
-      tanggal:
-        income.tanggal,
+      tanggal: income.tanggal,
 
       tipe: "masuk",
 
-      keterangan:
-        `Pemasukan Lain [${income.id}] - ${
-          income.jenis ||
-          income.sumber ||
-          "Pemasukan Lain"
-        }${
-          income.keterangan
-            ? ` - ${income.keterangan}`
-            : ""
-        }`,
+      keterangan: `Pemasukan Lain [${shortId(income.id)}] - ${
+        income.jenis || income.sumber || "Pemasukan Lain"
+      }${income.keterangan ? ` - ${income.keterangan}` : ""}`,
 
       jumlah: nominal,
 
       saldoBerjalan: 0,
 
-      referensiId:
-        income.id
+      referensiId: income.id
     });
   }
 
@@ -2208,34 +1857,29 @@ export function recalculateAllLedgers(
      EXPENSES
   ======================================================= */
 
-  const expenses =
-    deduplicateById(
-      db.expenses
-    );
+  const expenses = deduplicateById(db.expenses);
 
   for (const expense of expenses) {
-    const jumlah =
-      amount(expense.jumlah);
+    const jumlah = amount(expense.jumlah);
 
     if (jumlah <= 0) continue;
 
     db.kas.push({
       id: `KAS-${expense.id}`,
 
-      tanggal:
-        expense.tanggal,
+      tanggal: expense.tanggal,
 
       tipe: "keluar",
 
-      keterangan:
-        `Pengeluaran Operasional [${expense.id}] - ${expense.keterangan}`,
+      keterangan: `Pengeluaran Operasional [${shortId(expense.id)}] - ${
+        expense.keterangan
+      }`,
 
       jumlah,
 
       saldoBerjalan: 0,
 
-      referensiId:
-        expense.id
+      referensiId: expense.id
     });
   }
 
@@ -2243,20 +1887,13 @@ export function recalculateAllLedgers(
      RUNNING BALANCE
   ======================================================= */
 
-  calculateStudentRunningBalance(
-    db
-  );
+  calculateStudentRunningBalance(db);
 
-  calculateTutorRunningBalance(
-    db
-  );
+  calculateTutorRunningBalance(db);
 
-  calculateKasRunningBalance(
-    db
-  );
+  calculateKasRunningBalance(db);
 
-  db.lastUpdated =
-    new Date().toISOString();
+  db.lastUpdated = new Date().toISOString();
 
   return db;
 }
@@ -2265,153 +1902,88 @@ export function recalculateAllLedgers(
    RUNNING BALANCES
 ========================================================= */
 
-function calculateStudentRunningBalance(
-  db: Database
-): void {
-  const running =
-    new Map<string, number>();
+function calculateStudentRunningBalance(db: Database): void {
+  const running = new Map<string, number>();
 
-  db.studentLedger.sort(
-    compareTransaction
-  );
+  db.studentLedger.sort(compareTransaction);
 
   for (const tx of db.studentLedger) {
-    const previous =
-      running.get(tx.siswaId) ||
-      0;
+    const previous = running.get(tx.siswaId) || 0;
 
     const next =
-      previous +
-      (tx.tipe === "debit"
-        ? amount(tx.jumlah)
-        : -amount(tx.jumlah));
+      previous + (tx.tipe === "debit" ? amount(tx.jumlah) : -amount(tx.jumlah));
 
-    tx.saldoBerjalan =
-      next;
+    tx.saldoBerjalan = next;
 
-    running.set(
-      tx.siswaId,
-      next
-    );
+    running.set(tx.siswaId, next);
   }
 }
 
-function calculateTutorRunningBalance(
-  db: Database
-): void {
-  const running =
-    new Map<string, number>();
+function calculateTutorRunningBalance(db: Database): void {
+  const running = new Map<string, number>();
 
-  db.tutorLedger.sort(
-    compareTransaction
-  );
+  db.tutorLedger.sort(compareTransaction);
 
   for (const tx of db.tutorLedger) {
-    const previous =
-      running.get(tx.tutorId) ||
-      0;
+    const previous = running.get(tx.tutorId) || 0;
 
     const next =
       previous +
-      (tx.tipe === "kredit"
-        ? amount(tx.jumlah)
-        : -amount(tx.jumlah));
+      (tx.tipe === "kredit" ? amount(tx.jumlah) : -amount(tx.jumlah));
 
-    tx.saldoBerjalan =
-      next;
+    tx.saldoBerjalan = next;
 
-    running.set(
-      tx.tutorId,
-      next
-    );
+    running.set(tx.tutorId, next);
   }
 }
 
-function calculateKasRunningBalance(
-  db: Database
-): void {
+function calculateKasRunningBalance(db: Database): void {
   let running = 0;
 
-  db.kas.sort(
-    compareTransaction
-  );
+  db.kas.sort(compareTransaction);
 
   for (const tx of db.kas) {
-    running +=
-      tx.tipe === "masuk"
-        ? amount(tx.jumlah)
-        : -amount(tx.jumlah);
+    running += tx.tipe === "masuk" ? amount(tx.jumlah) : -amount(tx.jumlah);
 
-    tx.saldoBerjalan =
-      running;
+    tx.saldoBerjalan = running;
   }
 }
 
-function compareTransaction<
-  T extends {
-    tanggal: string;
-    id: string;
-  }
->(
+function compareTransaction<T extends { tanggal: string; id: string }>(
   a: T,
   b: T
 ): number {
-  const dateCompare =
-    String(
-      a.tanggal || ""
-    ).localeCompare(
-      String(
-        b.tanggal || ""
-      )
-    );
+  const dateCompare = String(a.tanggal || "").localeCompare(
+    String(b.tanggal || "")
+  );
 
   if (dateCompare !== 0) {
     return dateCompare;
   }
 
-  return String(
-    a.id || ""
-  ).localeCompare(
-    String(
-      b.id || ""
-    )
-  );
+  return String(a.id || "").localeCompare(String(b.id || ""));
 }
 
 /* =========================================================
    DEDUPLICATE
 ========================================================= */
 
-function deduplicateById<
-  T extends { id: string }
->(
-  items: T[]
-): T[] {
-  const map =
-    new Map<string, T>();
+function deduplicateById<T extends { id: string }>(items: T[]): T[] {
+  const map = new Map<string, T>();
 
   for (const item of items) {
     if (item?.id) {
-      map.set(
-        item.id,
-        item
-      );
+      map.set(item.id, item);
     }
   }
 
-  return Array.from(
-    map.values()
-  );
+  return Array.from(map.values());
 }
 
 function deduplicateSessions(
   sessions: RiwayatPertemuan[]
 ): RiwayatPertemuan[] {
-  const map =
-    new Map<
-      string,
-      RiwayatPertemuan
-    >();
+  const map = new Map<string, RiwayatPertemuan>();
 
   for (const session of sessions) {
     if (!session?.id) {
@@ -2430,67 +2002,36 @@ function deduplicateSessions(
      * tanggal + tutor + siswa + program
      * hanya boleh satu sesi.
      */
-    if (
-      !map.has(businessKey)
-    ) {
-      map.set(
-        businessKey,
-        session
-      );
+    if (!map.has(businessKey)) {
+      map.set(businessKey, session);
     }
   }
 
-  return Array.from(
-    map.values()
-  );
+  return Array.from(map.values());
 }
 
-function deduplicatePayments(
-  payments: PembayaranSiswa[]
-): PembayaranSiswa[] {
-  return deduplicateById(
-    payments
-  );
+function deduplicatePayments(payments: PembayaranSiswa[]): PembayaranSiswa[] {
+  return deduplicateById(payments);
 }
 
-function deduplicateSlips(
-  slips: SlipGaji[]
-): SlipGaji[] {
-  return deduplicateById(
-    slips
-  );
+function deduplicateSlips(slips: SlipGaji[]): SlipGaji[] {
+  return deduplicateById(slips);
 }
 
 /* =========================================================
    DAY
 ========================================================= */
 
-export function getNamaHariIndo(
-  dateStr: string
-): string {
+export function getNamaHariIndo(dateStr: string): string {
   if (!dateStr) {
     return "Senin";
   }
 
-  const date =
-    new Date(
-      `${dateStr}T00:00:00`
-    );
+  const date = new Date(`${dateStr}T00:00:00`);
 
-  const days = [
-    "Minggu",
-    "Senin",
-    "Selasa",
-    "Rabu",
-    "Kamis",
-    "Jumat",
-    "Sabtu"
-  ];
+  const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 
-  return (
-    days[date.getDay()] ||
-    "Senin"
-  );
+  return days[date.getDay()] || "Senin";
 }
 
 /* =========================================================
@@ -2500,14 +2041,7 @@ export function getNamaHariIndo(
 export function addScheduleTransaction(
   db: Database,
   data: {
-    hari:
-      | "Senin"
-      | "Selasa"
-      | "Rabu"
-      | "Kamis"
-      | "Jumat"
-      | "Sabtu"
-      | "Minggu";
+    hari: "Senin" | "Selasa" | "Rabu" | "Kamis" | "Jumat" | "Sabtu" | "Minggu";
 
     waktu: string;
 
@@ -2518,51 +2052,29 @@ export function addScheduleTransaction(
     programId: string;
   }
 ): Database {
-  const next =
-    cloneDatabase(db);
+  const next = cloneDatabase(db);
 
-  const tutor =
-    next.tutors.find(
-      (t) =>
-        t.id === data.tutorId
-    );
+  const tutor = next.tutors.find((t) => t.id === data.tutorId);
 
-  const student =
-    next.students.find(
-      (s) =>
-        s.id === data.siswaId
-    );
+  const student = next.students.find((s) => s.id === data.siswaId);
 
-  const program =
-    next.programs.find(
-      (p) =>
-        p.id === data.programId
-    );
+  const program = next.programs.find((p) => p.id === data.programId);
 
-  if (
-    !tutor ||
-    !student ||
-    !program
-  ) {
-    throw new Error(
-      "Tutor, siswa, atau program tidak ditemukan."
-    );
+  if (!tutor || !student || !program) {
+    throw new Error("Tutor, siswa, atau program tidak ditemukan.");
   }
 
-  const duplicate =
-    next.schedules.some(
-      (s) =>
-        s.hari === data.hari &&
-        s.waktu === data.waktu &&
-        s.tutorId === data.tutorId &&
-        s.siswaId === data.siswaId &&
-        s.programId === data.programId
-    );
+  const duplicate = next.schedules.some(
+    (s) =>
+      s.hari === data.hari &&
+      s.waktu === data.waktu &&
+      s.tutorId === data.tutorId &&
+      s.siswaId === data.siswaId &&
+      s.programId === data.programId
+  );
 
   if (duplicate) {
-    throw new Error(
-      "Jadwal yang sama sudah ada."
-    );
+    throw new Error("Jadwal yang sama sudah ada.");
   }
 
   next.schedules.push({
@@ -2582,43 +2094,26 @@ export function addScheduleTransaction(
     programNama: program.nama
   });
 
-  return saveDatabaseOnly(
-    next
-  );
+  return saveDatabaseOnly(next);
 }
 
 export function deleteScheduleTransaction(
   db: Database,
   scheduleId: string
 ): Database {
-  const next =
-    cloneDatabase(db);
+  const next = cloneDatabase(db);
 
-  const exists =
-    next.schedules.some(
-      (s) =>
-        s.id === scheduleId
-    );
+  const exists = next.schedules.some((s) => s.id === scheduleId);
 
   if (!exists) {
     return db;
   }
 
-  next.schedules =
-    next.schedules.filter(
-      (s) =>
-        s.id !== scheduleId
-    );
+  next.schedules = next.schedules.filter((s) => s.id !== scheduleId);
 
-  next.deletedIds =
-    uniqueStrings([
-      ...next.deletedIds,
-      scheduleId
-    ]);
+  next.deletedIds = uniqueStrings([...next.deletedIds, scheduleId]);
 
-  return saveDatabaseOnly(
-    next
-  );
+  return saveDatabaseOnly(next);
 }
 
 /* =========================================================
@@ -2629,15 +2124,11 @@ export function updateBroadcastMessageTransaction(
   db: Database,
   message: string
 ): Database {
-  const next =
-    cloneDatabase(db);
+  const next = cloneDatabase(db);
 
-  next.broadcastMessage =
-    message;
+  next.broadcastMessage = message;
 
-  return saveDatabaseOnly(
-    next
-  );
+  return saveDatabaseOnly(next);
 }
 
 /* =========================================================
@@ -2706,6 +2197,14 @@ export default {
   addGeneralExpenseTransaction,
 
   addOtherIncomeTransaction,
+
+  updateTransactionAmount,
+
+  deleteTransactionBySource,
+
+  describeTransactionDelete,
+
+  findTransactionSource,
 
   submitAttendanceReport,
 

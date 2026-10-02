@@ -314,7 +314,7 @@ export interface RaportSiswa {
 ========================================================= */
 
 export interface UserSession {
-  role: "admin" | "tutor";
+  role: "admin" | "tutor" | "perpustakaan";
   userId: string;
   nama: string;
 }
@@ -340,6 +340,7 @@ export interface Database {
 
   broadcastMessage: string;
   adminPassword?: string;
+  perpustakaanPassword?: string;
   lastUpdated: string;
   deletedIds: string[];
 }

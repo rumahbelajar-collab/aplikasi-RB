@@ -19,7 +19,8 @@ import {
   Award,
   BookAlert,
   HardDrive,
-  BookA
+  BookA,
+  Library
 } from "lucide-react";
 import { 
   Database, 
@@ -99,19 +100,13 @@ export default function TutorDashboard({
     }
 
     // Call core transaction
-    let nextDb;
-    try {
-      nextDb = addSessionTransaction(db, {
-        tanggal: getTodayDateString(), // Today's Context Date
-        siswaId,
-        tutorId,
-        programId,
-        catatan: `Pertemuan Mengajar Real-time (Program: ${selectedProgram?.nama})`
-      });
-    } catch (error: any) {
-      alert(error?.message || "Gagal menyimpan riwayat pertemuan. Silakan coba lagi.");
-      return;
-    }
+    const nextDb = addSessionTransaction(db, {
+      tanggal: getTodayDateString(), // Today's Context Date
+      siswaId,
+      tutorId,
+      programId,
+      catatan: `Pertemuan Mengajar Real-time (Program: ${selectedProgram?.nama})`
+    });
 
     onUpdateDb(nextDb);
 
@@ -133,19 +128,13 @@ export default function TutorDashboard({
       return;
     }
 
-    let nextDb;
-    try {
-      nextDb = addPaymentTransaction(db, {
-        tanggal: depositTanggal || getTodayDateString(),
-        siswaId: depositSiswaId,
-        jumlah: Number(depositJumlah),
-        metode: "tutor",
-        tutorId: tutorId
-      });
-    } catch (error: any) {
-      alert(error?.message || "Gagal mencatat uang titipan. Silakan coba lagi.");
-      return;
-    }
+    const nextDb = addPaymentTransaction(db, {
+      tanggal: depositTanggal || getTodayDateString(),
+      siswaId: depositSiswaId,
+      jumlah: Number(depositJumlah),
+      metode: "tutor",
+      tutorId: tutorId
+    });
 
     onUpdateDb(nextDb);
 
@@ -207,8 +196,17 @@ export default function TutorDashboard({
 
   const todaySchedules = getTodaySchedule();
 
+  const [tanggalSesi, setTanggalSesi] = useState<string>(getTodayDateString());
+
+  const handleOpenLogForm = () => {
+  setTanggalSesi(getTodayDateString()); // Reset ke tanggal hari ini
+  setIsLogFormOpen(true);
+};
+
+
+
   return (
-    <div id="tutor-dashboard-container" className="flex flex-col space-y-10">
+    <div id="tutor-dashboard-container" className="bg-brand-100/50 flex flex-col space-y-10">
       {/* Blue Header Banner */}
       <div id="dashboard-hero" className="bg-gradient-to-br from-blue-500 to-brand-500 text-white p-6 rounded-b-[32px] shadow-lg mb-6 relative overflow-hidden">
         <div className="absolute top-[-30px] right-[-30px] w-36 h-36 bg-white/5 rounded-full" />
@@ -240,7 +238,7 @@ export default function TutorDashboard({
           {/* 1. Main Metrics (3 Kartu Besar) */}
     <div className="grid grid-cols-3 gap-2.5">
       {/* 1. Hari Ini */}
-      <div className="bg-slate-50 p-3 rounded-2xl flex flex-col justify-between min-h-[75px]">
+      <div className="bg-brand-70 p-3 rounded-2xl flex flex-col justify-between min-h-[75px]">
         {/* Tulisan di Atas */}
         <p className="text-[9.5px] text-brand-400 font-black uppercase tracking-wider text-left">Hari Ini</p>
         
@@ -255,7 +253,7 @@ export default function TutorDashboard({
       </div>
 
       {/* 2. Siswa */}
-      <div className="bg-slate-50 p-3 rounded-2xl flex flex-col justify-between min-h-[75px]">
+      <div className="bg-brand-70 p-3 rounded-2xl flex flex-col justify-between min-h-[75px]">
         {/* Tulisan di Atas */}
         <p className="text-[9.5px] text-brand-400 font-black uppercase tracking-wider text-left">Siswa</p>
         
@@ -268,7 +266,7 @@ export default function TutorDashboard({
       </div>
 
       {/* 3. Uang Titipan */}
-      <div className="bg-slate-50 p-3 rounded-2xl flex flex-col justify-between min-h-[75px] min-w-0">
+      <div className="bg-brand-70 p-3 rounded-2xl flex flex-col justify-between min-h-[75px] min-w-0">
         <p className="text-[9.5px] text-amber-400 font-black uppercase tracking-wider text-left">Titipan</p>
         
         {/* Baris Bawah: Ikon dan Sampingnya Angka (Format Rupiah) */}
@@ -289,7 +287,7 @@ export default function TutorDashboard({
     </div>
 
       {/* 1. BROADCAST PESAN ADMIN */}
-      <div id="broadcast-admin" className="relative mt-4 bg-brand-50 border border-brand-200 p-3 pt-5 rounded-lg shadow-3xs">
+      <div id="broadcast-admin" className="relative mt-4 bg-brand-500 border border-brand-200 p-3 pt-5 rounded-lg shadow-3xs">
         {/* Label Pesan Admin (Posisi Absolut) */}
         <div className="absolute -top-2 left-3 flex items-center gap-1 bg-amber-500 text-white px-2 py-0.5 rounded-lg text-[8.5px] font-extrabold uppercase tracking-wide">
           <Megaphone size={10} />
@@ -297,14 +295,14 @@ export default function TutorDashboard({
         </div>
 
         {/* Isi Pesan (Statik/Tidak Bergerak) */}
-        <div className="text-[11px] font-medium text-brand-900 leading-relaxed">
+        <div className="text-[11px] font-medium text-white leading-relaxed">
           {db.broadcastMessage || "📢 PENGUMUMAN TUTOR: Mohon segera lakukan serah terima uang titipan pembayaran siswa yang diterima kepada Staf Administrasi maksimal 3 hari sejak diterima. | Harap catat riwayat pertemuan di hari bimbingan yang sama untuk ketertiban honor. | Terima kasih!"}
         </div>
       </div>
 
         {/* 3. QUICK CALL-TO-ACTION (CTA) BUTTONS */}
 
-        <div className="bg-slate-50 p-4 rounded-lg">
+        <div className="bg-brand-70 p-4 rounded-lg">
         <p className="text-[12px] text-slate-500 font-black uppercase tracking-wider text-left mb-3">Menu</p>
           {/* Success message banner (Tetap di atas agar tidak merusak baris grid) */}
           {successMessage && (
@@ -419,6 +417,24 @@ export default function TutorDashboard({
           </div>
         </div>
 
+        {/* BANNER PERPUSTAKAAN */}
+        <button
+          type="button"
+          onClick={() => onNavigateToTab("perpustakaan_tutor")}
+          className="w-full bg-cyan-500 p-4 rounded-2xl shadow-3xs flex items-center gap-3 text-left group hover:border-brand-200 transition-all active:scale-[0.98] cursor-pointer"
+        >
+          <div className="w-11 h-11 bg-cyan-100 text-cyan-600 rounded-xl flex items-center justify-center shrink-0 group-hover:bg-cyan-200 transition-colors">
+            <Library size={22} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black text-white">Perpustakaan</p>
+            <p className="text-[11px] text-white font-medium mt-0.5 leading-relaxed">
+              Temukan buku, ajukan peminjaman, dan lihat koleksi yang tersedia.
+            </p>
+          </div>
+          <ChevronRight size={18} className="text-slate-300 group-hover:text-brand-400 transition-colors shrink-0" />
+        </button>
+
         {/* 4. TODAY'S SPECIFIC SCHEDULE */}
         <div className="bg-white p-5 rounded-lg border border-slate-100 shadow-sm">
           {/* Header dengan aksen garis */}
@@ -439,7 +455,7 @@ export default function TutorDashboard({
             {todaySchedules.map((item, idx) => (
               <div 
                 key={idx} 
-                className="group relative bg-slate-50 hover:bg-white border border-slate-100 hover:border-brand-200 p-4 rounded-2xl transition-all duration-300 flex items-center justify-between shadow-sm hover:shadow-md"
+                className="group relative bg-rose-500 hover:bg-white border border-slate-100 hover:border-brand-200 p-4 rounded-xl transition-all duration-300 flex items-center justify-between shadow-sm hover:shadow-md"
               >
                 {/* Info Utama */}
                 <div className="flex items-center gap-4">
@@ -447,7 +463,7 @@ export default function TutorDashboard({
                   <div className={`w-1.5 h-12 rounded-full ${item.status === "Selesai" ? "bg-brand-500" : "bg-amber-400"}`} />
                   
                   <div className="space-y-0.5">
-                    <p className="text-sm font-black text-slate-800">{item.siswaNama}</p>
+                    <p className="text-sm font-black text-white">{item.siswaNama}</p>
                     <p className="text-[11px] text-slate-500 font-medium">{item.programNama}</p>
                     <div className="flex items-center gap-2 pt-1">
                       <span className="text-[10px] font-bold text-slate-600 bg-slate-200/60 px-2 py-0.5 rounded-md">
@@ -551,65 +567,80 @@ export default function TutorDashboard({
               </button>
             </div>
 
-            <form onSubmit={handleQuickSubmit} className="p-5 space-y-4">
-              {/* Read-Only Automatic Date for Tutors */}
-              <div>
-                <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Tanggal Sesi</label>
-                <div className="flex items-center gap-2 px-3 py-2 bg-slate-100/70 border border-slate-200/50 rounded-xl text-slate-600">
-                  <Calendar size={13} className="text-slate-400" />
-                  <span className="text-xs font-semibold">{formatTanggalIndo(getTodayDateString())}</span>
-                  <span className="ml-auto text-[9px] bg-slate-200/80 text-slate-500 font-bold px-1.5 py-0.5 rounded-md uppercase tracking-wider">Auto-Set</span>
-                </div>
-              </div>
+<form onSubmit={handleQuickSubmit} className="p-5 space-y-4">
+  {/* Custom Selectable Date */}
+  <div>
+    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+      Tanggal Sesi *
+    </label>
+    <div className="relative flex items-center">
+      <input
+        type="date"
+        required
+        value={tanggalSesi}
+        onChange={(e) => setTanggalSesi(e.target.value)}
+        className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand-500 text-slate-700 cursor-pointer"
+      />
+    </div>
+  </div>
 
-              {/* Select Student */}
-              <div>
-                <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Pilih Siswa *</label>
-                <select
-                  required
-                  value={siswaId}
-                  onChange={handleStudentChange}
-                  className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand-500"
-                >
-                  <option value="">-- Pilih Siswa --</option>
-                  {activeStudents.map(s => (
-                    <option key={s.id} value={s.id}>{s.nama} ({s.id})</option>
-                  ))}
-                </select>
-              </div>
+  {/* Select Student */}
+  <div>
+    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+      Pilih Siswa *
+    </label>
+    <select
+      required
+      value={siswaId}
+      onChange={handleStudentChange}
+      className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand-500 text-slate-700 cursor-pointer"
+    >
+      <option value="">-- Pilih Siswa --</option>
+      {activeStudents.map((s) => (
+        <option key={s.id} value={s.id}>
+          {s.nama} ({s.id})
+        </option>
+      ))}
+    </select>
+  </div>
 
-              {/* Select Daily Program */}
-              <div>
-                <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">Program Harian *</label>
-                <select
-                  required
-                  value={programId}
-                  onChange={(e) => setProgramId(e.target.value)}
-                  className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand-500"
-                >
-                  <option value="">-- Pilih Program Harian --</option>
-                  {activePrograms.map(p => (
-                    <option key={p.id} value={p.id}>{p.nama}</option>
-                  ))}
-                </select>
-              </div>
+  {/* Select Daily Program */}
+  <div>
+    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+      Program Harian *
+    </label>
+    <select
+      required
+      value={programId}
+      onChange={(e) => setProgramId(e.target.value)}
+      className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand-500 text-slate-700 cursor-pointer"
+    >
+      <option value="">-- Pilih Program Harian --</option>
+      {activePrograms.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.nama}
+        </option>
+      ))}
+    </select>
+  </div>
 
-              <div className="flex gap-2 pt-2.5 border-t border-slate-50">
-                <button
-                  type="button"
-                  onClick={() => setIsLogFormOpen(false)}
-                  className="flex-1 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-500 font-bold text-xs rounded-xl cursor-pointer"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all active:scale-98"
-                >
-                  Simpan Pertemuan
-                </button>
-              </div>
-            </form>
+  {/* Action Buttons */}
+  <div className="flex gap-2 pt-2.5 border-t border-slate-100">
+    <button
+      type="button"
+      onClick={() => setIsLogFormOpen(false)}
+      className="flex-1 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-500 font-bold text-xs rounded-xl cursor-pointer transition-colors"
+    >
+      Batal
+    </button>
+    <button
+      type="submit"
+      className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all active:scale-98"
+    >
+      Simpan Pertemuan
+    </button>
+  </div>
+</form>
           </div>
         </div>
       )}

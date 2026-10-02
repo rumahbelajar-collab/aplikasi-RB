@@ -18,6 +18,7 @@ import {
   Eye,
   EyeOff,
   RefreshCw,
+  Library,
 } from "lucide-react";
 
 import {
@@ -51,6 +52,8 @@ import AdminLaporan from "./components/AdminLaporan";
 import TutorDashboard from "./components/TutorDashboard";
 import TutorRiwayat from "./components/TutorRiwayat";
 import TutorRekening from "./components/TutorRekening";
+import PerpustakaanTutor from "./components/PerpustakaanTutor";
+import PerpustakaanDashboard from "./components/PerpustakaanDashboard";
 import TutorLaporan from "./components/TutorLaporan";
 
 import CustomDatePicker from "./components/CustomDatePicker";
@@ -598,6 +601,24 @@ export default function App() {
       return;
     }
 
+    const allowedPerpustakaanPassword =
+      db?.perpustakaanPassword || "Pustaka01";
+
+    if (
+      loginId.trim().toLowerCase() ===
+        "perpustakaan" &&
+      password === allowedPerpustakaanPassword
+    ) {
+      setUserSession({
+        role: "perpustakaan",
+        userId: "perpustakaan",
+        nama: "Perpustakaan",
+      });
+
+      setActiveTab("home");
+      return;
+    }
+
     const normalizedLogin =
       loginId.trim().toLowerCase();
 
@@ -1112,6 +1133,16 @@ export default function App() {
             icon: Wallet,
             isActive: activeTab === "rekening",
             onClick: () => setActiveTab("rekening"),
+          },
+        ]
+      : userSession?.role === "perpustakaan"
+      ? [
+          {
+            id: "nav-perpus-home",
+            label: "Dashboard",
+            icon: Library,
+            isActive: activeTab === "home",
+            onClick: () => setActiveTab("home"),
           },
         ]
       : [];
@@ -1852,7 +1883,7 @@ export default function App() {
                     />
                   )}
                 </>
-              ) : (
+              ) : userSession.role === "tutor" ? (
                 <>
                   {activeTab ===
                     "home" && (
@@ -1905,8 +1936,37 @@ export default function App() {
                       }
                     />
                   )}
+
+                  {activeTab ===
+                    "perpustakaan_tutor" && (
+                    <PerpustakaanTutor
+                      db={db}
+                      tutorId={
+                        userSession.userId
+                      }
+                      tutorNama={
+                        userSession.nama
+                      }
+                      onBack={() =>
+                        setActiveTab("home")
+                      }
+                      onUpdateDb={
+                        handleUpdateDb
+                      }
+                    />
+                  )}
                 </>
-              )}
+              ) : userSession.role === "perpustakaan" ? (
+                <>
+                  {activeTab === "home" && (
+                    <PerpustakaanDashboard
+                      db={db}
+                      onUpdateDb={handleUpdateDb}
+                      petugasNama={userSession.nama}
+                    />
+                  )}
+                </>
+              ) : null}
             </div>
           )}
         </main>

@@ -146,21 +146,14 @@ export default function TutorLaporan({ db, tutorId, onUpdateDb }: TutorLaporanPr
       return;
     }
 
-    let updatedDb: Database;
-
-    try {
-      updatedDb = submitAttendanceReport(db, {
-        tanggal,
-        tutorId,
-        siswaId,
-        programId,
-        fotoJurnal,
-        keterangan: keterangan.trim() || undefined
-      });
-    } catch (error: any) {
-      alert(error?.message || "Gagal menyimpan laporan absensi. Silakan coba lagi.");
-      return;
-    }
+    const updatedDb = submitAttendanceReport(db, {
+      tanggal,
+      tutorId,
+      siswaId,
+      programId,
+      fotoJurnal,
+      keterangan: keterangan.trim() || undefined
+    });
 
     onUpdateDb(updatedDb);
 
