@@ -11,7 +11,7 @@
 // GANTI dengan nomor WhatsApp Admin.
 // Format: kode negara + nomor, TANPA "+" dan TANPA "0" di depan.
 // Contoh: nomor 0812-3456-7890 -> ditulis "6281234567890"
-export const ADMIN_WHATSAPP_NUMBER = "GANTI_NOMOR_WA_ADMIN";
+export const ADMIN_WHATSAPP_NUMBER = "6282337663291";
 
 export function buildWaLink(message: string, phone: string = ADMIN_WHATSAPP_NUMBER): string {
   return `https://wa.me/${phone}?text=${encodeURIComponent(message)}`;

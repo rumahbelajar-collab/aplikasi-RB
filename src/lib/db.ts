@@ -968,6 +968,117 @@ export function updateTransactionAmount(
 }
 
 /**
+ * Edit detail riwayat pertemuan (absensi): siswa, program belajar, dan nominal.
+ *
+ * - Jika program berubah, tarif siswa & honor tutor otomatis mengikuti
+ *   program baru (snapshot diperbarui), lalu `nominal` (jika diisi)
+ *   menimpa nilai sesuai konteks tabel ("siswa" = tarif, "honor" = honor).
+ * - Laporan kehadiran (LPK) yang sudah disetujui dan terkait sesi ini
+ *   ikut diperbarui supaya hubungan data tidak putus.
+ * - Ledger siswa, ledger tutor, dan saldo berjalan dibangun ulang.
+ */
+export function updateSessionDetails(
+  db: Database,
+  sessionId: string,
+  data: {
+    siswaId: string;
+    programId: string;
+    nominal?: number;
+    context: LedgerContext;
+  }
+): Database {
+  const next = cloneDatabase(db);
+
+  const index = next.sessions.findIndex((s) => s.id === sessionId);
+
+  if (index === -1) {
+    throw new Error("Riwayat pertemuan tidak ditemukan.");
+  }
+
+  const old = next.sessions[index];
+
+  const student = next.students.find((s) => s.id === data.siswaId);
+  const program = next.programs.find((p) => p.id === data.programId);
+
+  if (!student || !program) {
+    throw new Error("Siswa atau program belajar tidak ditemukan.");
+  }
+
+  // Cegah duplikat: tanggal + tutor + siswa + program harus unik
+  const duplicate = next.sessions.some(
+    (s) =>
+      s.id !== sessionId &&
+      s.tanggal === old.tanggal &&
+      s.tutorId === old.tutorId &&
+      s.siswaId === student.id &&
+      s.programId === program.id
+  );
+
+  if (duplicate) {
+    throw new Error(
+      "Sudah ada sesi lain dengan tanggal, tutor, siswa, dan program yang sama."
+    );
+  }
+
+  const programChanged = old.programId !== program.id;
+
+  let tarif = programChanged
+    ? amount(program.tarifSiswa)
+    : amount(old.tarifSiswaSnapshot);
+
+  let honor = programChanged
+    ? amount(program.honorTutor)
+    : amount(old.honorTutorSnapshot);
+
+  if (data.nominal !== undefined && data.nominal !== null) {
+    const nominal = amount(data.nominal);
+
+    if (nominal <= 0) {
+      throw new Error("Nominal harus lebih dari 0.");
+    }
+
+    if (data.context === "honor") {
+      honor = nominal;
+    } else {
+      tarif = nominal;
+    }
+  }
+
+  const now = new Date().toISOString();
+
+  // Sinkronkan laporan kehadiran yang sudah disetujui (pakai kunci lama)
+  next.attendanceReports = next.attendanceReports.map((r) =>
+    (r.status === "setuju" || r.status === "disetujui") &&
+    r.tanggal === old.tanggal &&
+    r.tutorId === old.tutorId &&
+    r.siswaId === old.siswaId &&
+    r.programId === old.programId
+      ? ({
+          ...r,
+          siswaId: student.id,
+          siswaNama: student.nama,
+          programId: program.id,
+          programNama: program.nama,
+          lastUpdated: now
+        } as any)
+      : r
+  );
+
+  next.sessions[index] = {
+    ...old,
+    siswaId: student.id,
+    siswaNama: student.nama,
+    programId: program.id,
+    programNama: program.nama,
+    tarifSiswaSnapshot: tarif,
+    honorTutorSnapshot: honor,
+    lastUpdated: now
+  } as any;
+
+  return saveAndReturn(recalculateAllLedgers(next));
+}
+
+/**
  * Hapus satu transaksi berdasarkan referensiId data sumber.
  * ID dicatat di deletedIds supaya tidak "hidup lagi" saat sinkronisasi.
  */
@@ -2199,6 +2310,8 @@ export default {
   addOtherIncomeTransaction,
 
   updateTransactionAmount,
+
+  updateSessionDetails,
 
   deleteTransactionBySource,
 

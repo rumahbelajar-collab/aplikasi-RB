@@ -612,7 +612,7 @@ export default function App() {
       setUserSession({
         role: "perpustakaan",
         userId: "perpustakaan",
-        nama: "Perpustakaan",
+        nama: "Petugas Perpustakaan",
       });
 
       setActiveTab("home");
@@ -1927,13 +1927,11 @@ export default function App() {
                     />
                   )}
 
-                  {activeTab ===
-                    "rekening" && (
+                  {activeTab === "rekening" && (
                     <TutorRekening
                       db={db}
-                      tutorId={
-                        userSession.userId
-                      }
+                      tutorId={userSession.userId}
+                      onUpdateDb={handleUpdateDb}
                     />
                   )}
 

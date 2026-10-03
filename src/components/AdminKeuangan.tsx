@@ -31,6 +31,7 @@ import {
   addGeneralExpenseTransaction,
   addOtherIncomeTransaction,
   updateTransactionAmount,
+  updateSessionDetails,
   deleteTransactionBySource,
   describeTransactionDelete,
   findTransactionSource,
@@ -162,6 +163,9 @@ export default function AdminKeuangan({
   // Edit nominal state (dipakai oleh Tagihan, Titipan, Honor, dan Buku Kas)
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const [editJumlah, setEditJumlah] = useState(0);
+  // Khusus edit riwayat pertemuan (absensi): siswa & program belajar
+  const [editSiswaId, setEditSiswaId] = useState("");
+  const [editProgramId, setEditProgramId] = useState("");
 
   // Handle deep-linking from Operasional Tab
   useEffect(() => {
@@ -363,8 +367,8 @@ export default function AdminKeuangan({
     const kind = findTransactionSource(db, refId);
     if (kind === "session") {
       return context === "honor"
-        ? "Mengubah honor tutor untuk sesi ini (snapshot honor). Rekening siswa tidak berubah."
-        : "Mengubah tarif siswa untuk sesi ini (snapshot tarif). Honor tutor tidak berubah.";
+        ? "Nominal honor tutor untuk sesi ini. Jika program diganti, honor dan tarif otomatis mengikuti program baru (nominal masih bisa diubah manual)."
+        : "Nominal tarif siswa untuk sesi ini. Jika program diganti, tarif dan honor tutor otomatis mengikuti program baru (nominal masih bisa diubah manual).";
     }
     if (kind === "slip") {
       return context === "kas"
@@ -383,6 +387,34 @@ export default function AdminKeuangan({
   const openEdit = (refId: string, context: LedgerContext, keterangan: string, jumlah: number) => {
     setEditTarget({ refId, context, keterangan });
     setEditJumlah(jumlah);
+
+    // Jika transaksi berasal dari absensi (riwayat pertemuan), siapkan siswa & program
+    const session = db.sessions.find(s => s.id === refId);
+    if (session) {
+      setEditSiswaId(session.siswaId);
+      setEditProgramId(session.programId);
+    } else {
+      setEditSiswaId("");
+      setEditProgramId("");
+    }
+  };
+
+  // Ganti program di modal -> nominal ikut tarif/honor program baru
+  const handleEditProgramChange = (programId: string, context: LedgerContext) => {
+    setEditProgramId(programId);
+    const prog = db.programs.find(p => p.id === programId);
+    if (prog) {
+      setEditJumlah(Number(context === "honor" ? prog.honorTutor : prog.tarifSiswa) || 0);
+    }
+  };
+
+  // Ganti siswa di modal -> program default mengikuti program siswa tsb
+  const handleEditSiswaChange = (siswaId: string, context: LedgerContext) => {
+    setEditSiswaId(siswaId);
+    const st = db.students.find(x => x.id === siswaId);
+    if (st?.programId && st.programId !== editProgramId) {
+      handleEditProgramChange(st.programId, context);
+    }
   };
 
   const handleEditSave = (e: React.FormEvent) => {
@@ -393,12 +425,20 @@ export default function AdminKeuangan({
       return;
     }
     try {
-      const nextDb = updateTransactionAmount(
-        db,
-        editTarget.refId,
-        Number(editJumlah),
-        editTarget.context
-      );
+      const isSession = findTransactionSource(db, editTarget.refId) === "session";
+      const nextDb = isSession
+        ? updateSessionDetails(db, editTarget.refId, {
+            siswaId: editSiswaId,
+            programId: editProgramId,
+            nominal: Number(editJumlah),
+            context: editTarget.context
+          })
+        : updateTransactionAmount(
+            db,
+            editTarget.refId,
+            Number(editJumlah),
+            editTarget.context
+          );
       onUpdateDb(nextDb);
       setEditTarget(null);
     } catch (err: any) {
@@ -1456,12 +1496,46 @@ export default function AdminKeuangan({
         <div id="edit-amount-modal" className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white w-full max-w-sm rounded-3xl shadow-xl overflow-hidden animate-slide-up">
             <div className="bg-brand-600 text-white p-4 flex justify-between items-center">
-              <h3 className="font-bold text-sm tracking-tight">Edit Nominal Transaksi</h3>
+              <h3 className="font-bold text-sm tracking-tight">
+                {findTransactionSource(db, editTarget.refId) === "session" ? "Edit Absensi / Pertemuan" : "Edit Nominal Transaksi"}
+              </h3>
               <Pencil size={18} />
             </div>
 
             <form onSubmit={handleEditSave} className="p-5 space-y-4">
               <p className="text-xs text-slate-600 font-semibold leading-snug">{editTarget.keterangan}</p>
+
+              {findTransactionSource(db, editTarget.refId) === "session" && (
+                <>
+                  <div>
+                    <label className="block text-[10.5px] text-slate-400 font-bold uppercase tracking-wider mb-1">Nama Siswa *</label>
+                    <select
+                      id="select-edit-siswa"
+                      value={editSiswaId}
+                      onChange={(e) => handleEditSiswaChange(e.target.value, editTarget.context)}
+                      className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none"
+                    >
+                      {sortedStudents.map((s) => (
+                        <option key={s.id} value={s.id}>{s.nama} ({s.id})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10.5px] text-slate-400 font-bold uppercase tracking-wider mb-1">Program Belajar *</label>
+                    <select
+                      id="select-edit-program"
+                      value={editProgramId}
+                      onChange={(e) => handleEditProgramChange(e.target.value, editTarget.context)}
+                      className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none"
+                    >
+                      {db.programs.map((p) => (
+                        <option key={p.id} value={p.id}>{p.nama}</option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className="block text-[10.5px] text-slate-400 font-bold uppercase tracking-wider mb-1">Nominal Baru (Rupiah) *</label>
