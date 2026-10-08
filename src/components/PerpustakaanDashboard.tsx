@@ -7,16 +7,12 @@ import {
   CheckCircle2,
   RotateCcw,
   Users,
-  IdCard,
-  ScanLine,
-  FileWarning,
-  BarChart3,
   ArrowLeft,
   Loader2,
   AlertTriangle,
   Plus,
   X,
-  XCircle
+  Search
 } from "lucide-react";
 import { Database } from "../lib/db";
 import {
@@ -36,11 +32,10 @@ import {
   createCategory,
   approveLoan,
   rejectLoan,
-  returnBook
+  returnBook,
+  createLoan
 } from "../lib/libraryApi";
-import { generateKartuAnggotaPDF } from "../lib/kartuAnggotaPdf";
-import { getQrImageUrl } from "../lib/qrCode";
-import ScanKartuPanel from "./ScanKartuPanel";
+import { matchesSearch } from "../lib/search";
 
 interface PerpustakaanDashboardProps {
   db: Database;
@@ -55,8 +50,6 @@ type MenuId =
   | "verifikasi"
   | "pengembalian"
   | "anggota"
-  | "kartu"
-  | "scan"
   | "regulasi"
   | "laporan";
 
@@ -72,8 +65,16 @@ const MENU_ITEMS: {
   { id: "peminjaman", label: "Peminjaman", icon: ClipboardList, boxClass: "bg-amber-50 text-amber-600", ready: true },
   { id: "verifikasi", label: "Verifikasi Peminjaman", icon: CheckCircle2, boxClass: "bg-emerald-50 text-emerald-600", ready: true },
   { id: "pengembalian", label: "Pengembalian", icon: RotateCcw, boxClass: "bg-indigo-50 text-indigo-600", ready: true },
-  { id: "anggota", label: "Anggota", icon: Users, boxClass: "bg-purple-50 text-purple-600", ready: true },
+  { id: "anggota", label: "Anggota", icon: Users, boxClass: "bg-purple-50 text-purple-600", ready: true }
 ];
+
+const EMPTY_BOOK_FORM = {
+  judul: "", penulis: "", penerbit: "", tahun_terbit: "", isbn: "",
+  kode_buku: "", kategori_id: "", deskripsi: "", cover_url: "",
+  lokasi_rak: "", stok_total: "1"
+};
+
+const EMPTY_LOAN_FORM = { user_id: "", id_buku: "", durasi_hari: "7" };
 
 export default function PerpustakaanDashboard({ db, petugasNama }: PerpustakaanDashboardProps) {
   const [activeMenu, setActiveMenu] = useState<MenuId | null>(null);
@@ -91,20 +92,18 @@ export default function PerpustakaanDashboard({ db, petugasNama }: PerpustakaanD
 
   const [showBookForm, setShowBookForm] = useState(false);
   const [editingBook, setEditingBook] = useState<BookItem | null>(null);
-  const [bookForm, setBookForm] = useState({
-    judul: "", penulis: "", penerbit: "", tahun_terbit: "", isbn: "",
-    kode_buku: "", kategori_id: "", deskripsi: "", cover_url: "",
-    lokasi_rak: "", stok_total: "1"
-  });
+  const [bookForm, setBookForm] = useState(EMPTY_BOOK_FORM);
   const [savingBook, setSavingBook] = useState(false);
 
   const [showCatForm, setShowCatForm] = useState(false);
   const [catForm, setCatForm] = useState({ nama: "", deskripsi: "" });
   const [savingCat, setSavingCat] = useState(false);
 
-  const [selectedAnggotaIds, setSelectedAnggotaIds] = useState<string[]>([]);
-  const [previewAnggota, setPreviewAnggota] = useState<{ id: string; nama: string } | null>(null);
-  const [printing, setPrinting] = useState(false);
+  // Input peminjaman (oleh petugas, peminjam dipilih dari daftar Tutor)
+  const [showLoanForm, setShowLoanForm] = useState(false);
+  const [savingLoan, setSavingLoan] = useState(false);
+  const [tutorSearch, setTutorSearch] = useState("");
+  const [loanForm, setLoanForm] = useState(EMPTY_LOAN_FORM);
 
   async function loadAll() {
     setLoadingAll(true);
@@ -150,7 +149,7 @@ export default function PerpustakaanDashboard({ db, petugasNama }: PerpustakaanD
       }
       setShowBookForm(false);
       setEditingBook(null);
-      setBookForm({ judul: "", penulis: "", penerbit: "", tahun_terbit: "", isbn: "", kode_buku: "", kategori_id: "", deskripsi: "", cover_url: "", lokasi_rak: "", stok_total: "1" });
+      setBookForm(EMPTY_BOOK_FORM);
       await loadAll();
     } catch (error: any) {
       alert(error?.message || "Gagal menyimpan buku.");
@@ -246,15 +245,48 @@ export default function PerpustakaanDashboard({ db, petugasNama }: PerpustakaanD
     }
   }
 
+  function openLoanForm() {
+    setLoanForm(EMPTY_LOAN_FORM);
+    setTutorSearch("");
+    setActionMsg("");
+    setShowLoanForm(true);
+  }
 
-  function toggleSelectAnggota(id: string) {
-    setSelectedAnggotaIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+  async function handleSaveLoan() {
+    const tutor = (db.tutors || []).find((t) => t.id === loanForm.user_id);
+    const book = books.find((b) => b.id_buku === loanForm.id_buku);
+    if (!tutor || !book) return;
+
+    setSavingLoan(true);
+    try {
+      await createLoan({
+        user_id: tutor.id,
+        nama_user: tutor.nama,
+        role_user: "Tutor",
+        id_buku: book.id_buku,
+        judul_buku: book.judul,
+        durasi_hari: Number(loanForm.durasi_hari) || 7,
+        verified_by: petugasNama,
+        langsung_disetujui: true // diinput petugas, langsung berstatus "dipinjam"
+      });
+      setShowLoanForm(false);
+      setActionMsg("Peminjaman berhasil dicatat.");
+      await loadAll();
+    } catch (error: any) {
+      alert(error?.message || "Gagal menyimpan peminjaman.");
+    } finally {
+      setSavingLoan(false);
+    }
   }
 
   const pendingLoans = loans.filter((l) => l.status === "menunggu");
   const activeLoans = loans.filter((l) => l.status === "dipinjam");
+
+  const filteredTutors = (db.tutors || []).filter(
+    (t) => t.status === "aktif" && matchesSearch(tutorSearch, t.nama, t.id)
+  );
+  const availableBooks = books.filter((b) => Number(b.stok_tersedia) > 0);
+  const selectedTutor = (db.tutors || []).find((t) => t.id === loanForm.user_id);
 
   const anggotaMap = new Map<string, { nama: string; role: string; totalPinjam: number; sedangDipinjam: number }>();
   loans.forEach((l) => {
@@ -302,37 +334,13 @@ export default function PerpustakaanDashboard({ db, petugasNama }: PerpustakaanD
             <div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
                 {[
-                  { 
-                    label: "Total Buku", 
-                    value: stats?.totalBuku ?? 0,
-                    bgColor: "bg-slate-50/40",
-                    labelColor: "text-blue-600",
-                    valColor: "text-blue-900" 
-                  },
-                  { 
-                    label: "Buku Tersedia", 
-                    value: stats?.stokTersedia ?? 0,
-                    bgColor: "bg-slate-50/40",
-                    labelColor: "text-emerald-600",
-                    valColor: "text-emerald-900" 
-                  },
-                  { 
-                    label: "Sedang Dipinjam", 
-                    value: stats?.sedangDipinjam ?? 0,
-                    bgColor: "bg-slate-50/40",
-                    labelColor: "text-amber-600",
-                    valColor: "text-amber-900" 
-                  },
-                  { 
-                    label: "Menunggu Verifikasi", 
-                    value: stats?.menungguVerifikasi ?? 0,
-                    bgColor: "bg-slate-50/40",
-                    labelColor: "text-rose-600",
-                    valColor: "text-rose-900" 
-                  },
+                  { label: "Total Buku", value: stats?.totalBuku ?? 0, bgColor: "bg-slate-50/40", labelColor: "text-blue-600", valColor: "text-blue-900" },
+                  { label: "Buku Tersedia", value: stats?.stokTersedia ?? 0, bgColor: "bg-slate-50/40", labelColor: "text-emerald-600", valColor: "text-emerald-900" },
+                  { label: "Sedang Dipinjam", value: stats?.sedangDipinjam ?? 0, bgColor: "bg-slate-50/40", labelColor: "text-amber-600", valColor: "text-amber-900" },
+                  { label: "Menunggu Verifikasi", value: stats?.menungguVerifikasi ?? 0, bgColor: "bg-slate-50/40", labelColor: "text-rose-600", valColor: "text-rose-900" }
                 ].map((item) => (
-                  <div 
-                    key={item.label} 
+                  <div
+                    key={item.label}
                     className={`${item.bgColor} p-3 rounded-2xl flex flex-col justify-between min-h-[75px] transition-all hover:scale-[1.02]`}
                   >
                     <p className={`text-[9px] ${item.labelColor} font-black uppercase tracking-wider text-left leading-tight`}>
@@ -346,51 +354,43 @@ export default function PerpustakaanDashboard({ db, petugasNama }: PerpustakaanD
               </div>
             </div>
 
-          <div className="bg-slate-50 p-2 rounded-lg">
-            <p className="text-[12px] text-brand-600 font-black uppercase tracking-wider text-left mb-3">
-              Menu Perpustakaan
-            </p>
-            <div className="flex flex-col gap-2.5">
-              {MENU_ITEMS.map((item) => {
-                const Icon = item.icon;
-                const isActive = activeMenu === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => setActiveMenu(item.id)}
-                    className={`bg-white p-6 rounded-2xl border shadow-3xs flex items-center justify-between text-left group cursor-pointer transition-all active:scale-[0.98] w-full relative ${
-                      isActive ? "border-brand-500 ring-1 ring-brand-500" : "border-slate-100"
-                    }`}
-                  >
-                    {/* Sisi Kiri: Icon & Teks */}
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className={`w-10 h-10 ${item.boxClass} rounded-xl flex items-center justify-center shrink-0`}>
-                        <Icon size={20} />
-                      </div>
-                      
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-[12px] font-black text-slate-800 leading-tight truncate">
-                          {item.label}
-                        </span>
-                        {item.description && (
-                          <span className="text-[10px] text-slate-400 font-medium leading-tight mt-0.5 truncate">
-                            {item.description}
+            <div className="bg-slate-50 p-2 rounded-lg">
+              <p className="text-[12px] text-brand-600 font-black uppercase tracking-wider text-left mb-3">
+                Menu Perpustakaan
+              </p>
+              <div className="flex flex-col gap-2.5">
+                {MENU_ITEMS.map((item) => {
+                  const Icon = item.icon;
+                  const isActive = activeMenu === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setActiveMenu(item.id)}
+                      className={`bg-white p-6 rounded-2xl border shadow-3xs flex items-center justify-between text-left group cursor-pointer transition-all active:scale-[0.98] w-full relative ${
+                        isActive ? "border-brand-500 ring-1 ring-brand-500" : "border-slate-100"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-10 h-10 ${item.boxClass} rounded-xl flex items-center justify-center shrink-0`}>
+                          <Icon size={20} />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-[12px] font-black text-slate-800 leading-tight truncate">
+                            {item.label}
                           </span>
-                        )}
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Sisi Kanan: Badge Notification jika ada */}
-                    {item.id === "verifikasi" && pendingLoans.length > 0 && (
-                      <span className="bg-rose-500 text-white text-[9px] font-black rounded-full px-2 py-0.5 shrink-0 ml-2">
-                        {pendingLoans.length}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
+                      {item.id === "verifikasi" && pendingLoans.length > 0 && (
+                        <span className="bg-rose-500 text-white text-[9px] font-black rounded-full px-2 py-0.5 shrink-0 ml-2">
+                          {pendingLoans.length}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
           </>
         )}
       </div>
@@ -406,60 +406,11 @@ export default function PerpustakaanDashboard({ db, petugasNama }: PerpustakaanD
             </div>
 
             <div className="p-5 overflow-y-auto flex-1">
-              {activeMenu === "kartu" && (
-                <div className="space-y-3">
-                  <button
-                    type="button"
-                    disabled={selectedAnggotaIds.length === 0 || printing}
-                    onClick={() => handleCetakKartu(selectedAnggotaIds)}
-                    className="w-full py-2.5 rounded-xl bg-brand-600 text-white text-[11px] font-bold disabled:opacity-40 flex items-center justify-center gap-2"
-                  >
-                    {printing && <Loader2 size={14} className="animate-spin" />}
-                    Cetak {selectedAnggotaIds.length > 0 ? `${selectedAnggotaIds.length} Kartu Terpilih` : "Kartu Terpilih"}
-                  </button>
-
-                  {db.tutors.length === 0 && (
-                    <p className="text-[11px] text-slate-400 text-center py-6">Belum ada data Tutor.</p>
-                  )}
-
-                  {db.tutors.map((tutor) => (
-                    <div key={tutor.id} className="bg-slate-50 p-3 rounded-xl flex items-center gap-2.5">
-                      <input
-                        type="checkbox"
-                        checked={selectedAnggotaIds.includes(tutor.id)}
-                        onChange={() => toggleSelectAnggota(tutor.id)}
-                      />
-                      <div className="min-w-0 flex-1">
-                        <p className="text-[11.5px] font-bold text-slate-800 truncate">{tutor.nama}</p>
-                        <p className="text-[10px] text-slate-400 truncate">ID: {tutor.id}</p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setPreviewAnggota({ id: tutor.id, nama: tutor.nama })}
-                        className="text-[10px] font-bold text-brand-600 px-2 py-1 rounded-lg hover:bg-brand-50 shrink-0"
-                      >
-                        Preview
-                      </button>
-                      <button
-                        type="button"
-                        disabled={printing}
-                        onClick={() => handleCetakKartu([tutor.id])}
-                        className="text-[10px] font-bold text-slate-500 px-2 py-1 rounded-lg hover:bg-white shrink-0 disabled:opacity-40"
-                      >
-                        Cetak
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {activeMenu === "scan" && <ScanKartuPanel db={db} />}
-
               {activeMenu === "buku" && (
                 <div className="space-y-3">
                   <button
                     type="button"
-                    onClick={() => { setEditingBook(null); setBookForm({ judul: "", penulis: "", penerbit: "", tahun_terbit: "", isbn: "", kode_buku: "", kategori_id: "", deskripsi: "", cover_url: "", lokasi_rak: "", stok_total: "1" }); setShowBookForm(true); }}
+                    onClick={() => { setEditingBook(null); setBookForm(EMPTY_BOOK_FORM); setShowBookForm(true); }}
                     className="w-full py-2.5 rounded-xl bg-brand-600 text-white text-[11px] font-bold flex items-center justify-center gap-1.5"
                   >
                     <Plus size={14} /> Tambah Buku
@@ -506,6 +457,14 @@ export default function PerpustakaanDashboard({ db, petugasNama }: PerpustakaanD
 
               {activeMenu === "peminjaman" && (
                 <div className="space-y-2.5">
+                  <button
+                    type="button"
+                    onClick={openLoanForm}
+                    className="w-full py-2.5 rounded-xl bg-brand-600 text-white text-[11px] font-bold flex items-center justify-center gap-1.5"
+                  >
+                    <Plus size={14} /> Input Peminjaman
+                  </button>
+                  {actionMsg && <p className="text-[11px] text-emerald-600 font-bold text-center">{actionMsg}</p>}
                   {loans.length === 0 && <p className="text-[11px] text-slate-400 text-center py-6">Belum ada peminjaman.</p>}
                   {loans.slice().reverse().map((loan) => (
                     <div key={loan.id_peminjaman} className="bg-slate-50 p-3 rounded-xl flex items-center justify-between gap-2">
@@ -661,6 +620,96 @@ export default function PerpustakaanDashboard({ db, petugasNama }: PerpustakaanD
         </div>
       )}
 
+      {showLoanForm && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-end md:items-center justify-center z-60" onClick={() => setShowLoanForm(false)}>
+          <div className="bg-white w-full max-w-sm rounded-t-3xl md:rounded-3xl shadow-xl overflow-hidden max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="p-4 flex items-center justify-between border-b border-slate-100 shrink-0">
+              <h3 className="font-bold text-sm text-slate-800">Input Peminjaman</h3>
+              <button type="button" onClick={() => setShowLoanForm(false)}><X size={18} className="text-slate-400" /></button>
+            </div>
+
+            <div className="p-4 space-y-3 overflow-y-auto">
+              <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Peminjam (Tutor)</p>
+                {selectedTutor ? (
+                  <div className="flex items-center justify-between bg-brand-50 border border-brand-200 rounded-lg px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold text-slate-800 truncate">{selectedTutor.nama}</p>
+                      <p className="text-[10px] text-slate-400">ID: {selectedTutor.id}</p>
+                    </div>
+                    <button type="button" onClick={() => setLoanForm({ ...loanForm, user_id: "" })} className="text-[10px] font-bold text-brand-600 shrink-0">Ganti</button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        placeholder="Cari nama tutor..."
+                        value={tutorSearch}
+                        onChange={(e) => setTutorSearch(e.target.value)}
+                        className="w-full pl-8 pr-3 py-2 rounded-lg border border-slate-200 text-xs"
+                      />
+                    </div>
+                    <div className="mt-1.5 max-h-40 overflow-y-auto space-y-1">
+                      {filteredTutors.length === 0 && (
+                        <p className="text-[10.5px] text-slate-400 text-center py-3">Tutor tidak ditemukan.</p>
+                      )}
+                      {filteredTutors.map((t) => (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setLoanForm({ ...loanForm, user_id: t.id })}
+                          className="w-full text-left bg-slate-50 hover:bg-brand-50 rounded-lg px-3 py-2"
+                        >
+                          <p className="text-xs font-bold text-slate-800 truncate">{t.nama}</p>
+                          <p className="text-[10px] text-slate-400">ID: {t.id}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Buku</p>
+                <select
+                  value={loanForm.id_buku}
+                  onChange={(e) => setLoanForm({ ...loanForm, id_buku: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs"
+                >
+                  <option value="">Pilih buku (stok tersedia)</option>
+                  {availableBooks.map((b) => (
+                    <option key={b.id_buku} value={b.id_buku}>
+                      {b.judul} (sisa {b.stok_tersedia})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-wider mb-1.5">Lama Pinjam (hari)</p>
+                <input
+                  type="number"
+                  min={1}
+                  value={loanForm.durasi_hari}
+                  onChange={(e) => setLoanForm({ ...loanForm, durasi_hari: e.target.value })}
+                  className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs"
+                />
+              </div>
+
+              <button
+                type="button"
+                disabled={savingLoan || !loanForm.user_id || !loanForm.id_buku}
+                onClick={handleSaveLoan}
+                className="w-full py-2.5 rounded-xl bg-brand-600 text-white text-[11px] font-bold disabled:opacity-40 flex items-center justify-center gap-2"
+              >
+                {savingLoan && <Loader2 size={14} className="animate-spin" />} Simpan Peminjaman
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCatForm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-end md:items-center justify-center z-60" onClick={() => setShowCatForm(false)}>
           <div className="bg-white w-full max-w-sm rounded-t-3xl md:rounded-3xl shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
@@ -673,43 +722,6 @@ export default function PerpustakaanDashboard({ db, petugasNama }: PerpustakaanD
               <input placeholder="Deskripsi (opsional)" value={catForm.deskripsi} onChange={(e) => setCatForm({ ...catForm, deskripsi: e.target.value })} className="w-full px-3 py-2 rounded-lg border border-slate-200 text-xs" />
               <button type="button" disabled={savingCat || !catForm.nama.trim()} onClick={handleSaveCategory} className="w-full py-2.5 rounded-xl bg-brand-600 text-white text-[11px] font-bold disabled:opacity-40 flex items-center justify-center gap-2">
                 {savingCat && <Loader2 size={14} className="animate-spin" />} Simpan
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {previewAnggota && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-60" onClick={() => setPreviewAnggota(null)}>
-          <div className="bg-white w-full max-w-xs rounded-3xl shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <div className="p-4 flex items-center justify-between border-b border-slate-100">
-              <h3 className="font-bold text-sm text-slate-800">Preview Kartu</h3>
-              <button type="button" onClick={() => setPreviewAnggota(null)}><X size={18} className="text-slate-400" /></button>
-            </div>
-            <div className="p-5">
-              <div className="rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-                <div className="p-3 flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-black text-slate-800 truncate">{previewAnggota.nama}</p>
-                    <p className="text-[10px] text-slate-400 mt-1">ID: {previewAnggota.id}</p>
-                    <p className="text-[10px] text-slate-400">Peran: Tutor</p>
-                    <p className="text-[10px] text-slate-400">Status: Aktif</p>
-                  </div>
-                  <img
-                    src={getQrImageUrl(previewAnggota.id, 150)}
-                    alt="QR Anggota"
-                    referrerPolicy="no-referrer"
-                    className="w-20 h-20 shrink-0"
-                  />
-                </div>
-              </div>
-
-              <button
-                type="button"
-                disabled={printing}
-                onClick={() => handleCetakKartu([previewAnggota.id])}
-                className="w-full mt-4 py-2.5 rounded-xl bg-brand-600 text-white text-[11px] font-bold disabled:opacity-40 flex items-center justify-center gap-2"
-              >
-                {printing && <Loader2 size={14} className="animate-spin" />} Cetak Kartu Ini
               </button>
             </div>
           </div>

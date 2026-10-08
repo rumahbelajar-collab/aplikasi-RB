@@ -164,6 +164,7 @@ export default function AdminKeuangan({
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const [editJumlah, setEditJumlah] = useState(0);
   // Khusus edit riwayat pertemuan (absensi): siswa & program belajar
+  const [editTanggal, setEditTanggal] = useState("");
   const [editSiswaId, setEditSiswaId] = useState("");
   const [editProgramId, setEditProgramId] = useState("");
 
@@ -384,9 +385,10 @@ export default function AdminKeuangan({
     return "";
   };
 
-  const openEdit = (refId: string, context: LedgerContext, keterangan: string, jumlah: number) => {
+  const openEdit = (refId: string, context: LedgerContext, keterangan: string, jumlah: number, tanggal: string) => {
     setEditTarget({ refId, context, keterangan });
     setEditJumlah(jumlah);
+    setEditTanggal(tanggal || getTodayDateString());
 
     // Jika transaksi berasal dari absensi (riwayat pertemuan), siapkan siswa & program
     const session = db.sessions.find(s => s.id === refId);
@@ -428,6 +430,7 @@ export default function AdminKeuangan({
       const isSession = findTransactionSource(db, editTarget.refId) === "session";
       const nextDb = isSession
         ? updateSessionDetails(db, editTarget.refId, {
+            tanggal: editTanggal,
             siswaId: editSiswaId,
             programId: editProgramId,
             nominal: Number(editJumlah),
@@ -437,7 +440,8 @@ export default function AdminKeuangan({
             db,
             editTarget.refId,
             Number(editJumlah),
-            editTarget.context
+            editTarget.context,
+            editTanggal
           );
       onUpdateDb(nextDb);
       setEditTarget(null);
@@ -459,26 +463,31 @@ export default function AdminKeuangan({
     }
   };
 
-  // Tombol Edit + Hapus (dipakai di semua tabel & kartu titipan)
+  // Tombol Edit + Hapus (dipakai di semua tabel & kartu titipan).
+  // Pengeluaran operasional di Buku Kas: tidak bisa diedit (hanya bisa dihapus).
   const renderRowActions = (
     refId: string | undefined,
     context: LedgerContext,
     keterangan: string,
-    jumlah: number
+    jumlah: number,
+    tanggal: string
   ) => {
     if (!refId) {
       return <span className="text-slate-300 text-[10px]">-</span>;
     }
+    const canEdit = findTransactionSource(db, refId) !== "expense";
     return (
       <div className="flex items-center justify-center gap-1">
-        <button
-          type="button"
-          title="Edit nominal"
-          onClick={() => openEdit(refId, context, keterangan, jumlah)}
-          className="p-1.5 rounded-lg bg-slate-50 hover:bg-brand-50 text-slate-400 hover:text-brand-600 cursor-pointer active:scale-95 transition-all"
-        >
-          <Pencil size={12} />
-        </button>
+        {canEdit && (
+          <button
+            type="button"
+            title="Edit"
+            onClick={() => openEdit(refId, context, keterangan, jumlah, tanggal)}
+            className="p-1.5 rounded-lg bg-slate-50 hover:bg-brand-50 text-slate-400 hover:text-brand-600 cursor-pointer active:scale-95 transition-all"
+          >
+            <Pencil size={12} />
+          </button>
+        )}
         <button
           type="button"
           title="Hapus transaksi"
@@ -694,7 +703,7 @@ export default function AdminKeuangan({
                                   <td className="p-2.5 text-right font-mono font-medium text-emerald-600">{item.tipe === "kredit" ? formatRupiah(item.jumlah) : "-"}</td>
                                   <td className="p-2.5 text-right font-mono font-semibold text-slate-600">{formatRupiah(item.saldoBerjalan)}</td>
                                   <td className="p-2.5">
-                                    {renderRowActions((item as any).referensiId, "siswa", item.keterangan, item.jumlah)}
+                                    {renderRowActions((item as any).referensiId, "siswa", item.keterangan, item.jumlah, item.tanggal)}
                                   </td>
                                 </tr>
                               ))}
@@ -841,9 +850,10 @@ export default function AdminKeuangan({
                             {/* Edit nominal & hapus titipan */}
                             {renderRowActions(
                               p.id,
-                              "siswa",
+                              "titipan",
                               `Titipan ${p.siswaNama} - ${formatRupiah(p.jumlah)}`,
-                              p.jumlah
+                              p.jumlah,
+                              p.tanggal
                             )}
                           </div>
                         </div>
@@ -1007,7 +1017,7 @@ export default function AdminKeuangan({
                                   <td className="p-2.5 text-right font-mono font-medium text-indigo-600">{item.tipe === "kredit" ? formatRupiah(item.jumlah) : "-"}</td>
                                   <td className="p-2.5 text-right font-mono font-semibold text-slate-600">{formatRupiah(item.saldoBerjalan)}</td>
                                   <td className="p-2.5">
-                                    {renderRowActions((item as any).referensiId, "honor", item.keterangan, item.jumlah)}
+                                    {renderRowActions((item as any).referensiId, "honor", item.keterangan, item.jumlah, item.tanggal)}
                                   </td>
                                 </tr>
                               ))}
@@ -1093,7 +1103,7 @@ export default function AdminKeuangan({
                             <td className="p-3 text-right font-mono font-medium text-rose-600">{item.tipe === "keluar" ? formatRupiah(item.jumlah) : "-"}</td>
                             <td className="p-3 text-right font-mono font-semibold text-slate-600">{formatRupiah(item.saldoBerjalan)}</td>
                             <td className="p-3">
-                              {renderRowActions(item.referensiId, "kas", item.keterangan, item.jumlah)}
+                              {renderRowActions(item.referensiId, "kas", item.keterangan, item.jumlah, item.tanggal)}
                             </td>
                           </tr>
                         ))}
@@ -1497,13 +1507,23 @@ export default function AdminKeuangan({
           <div className="bg-white w-full max-w-sm rounded-3xl shadow-xl overflow-hidden animate-slide-up">
             <div className="bg-brand-600 text-white p-4 flex justify-between items-center">
               <h3 className="font-bold text-sm tracking-tight">
-                {findTransactionSource(db, editTarget.refId) === "session" ? "Edit Absensi / Pertemuan" : "Edit Nominal Transaksi"}
+                {findTransactionSource(db, editTarget.refId) === "session" ? "Edit Absensi / Pertemuan" : "Edit Transaksi"}
               </h3>
               <Pencil size={18} />
             </div>
 
             <form onSubmit={handleEditSave} className="p-5 space-y-4">
               <p className="text-xs text-slate-600 font-semibold leading-snug">{editTarget.keterangan}</p>
+
+              <div>
+                <label className="block text-[10.5px] text-slate-400 font-bold uppercase tracking-wider mb-1">Tanggal Transaksi *</label>
+                <CustomDatePicker
+                  id="input-edit-tanggal"
+                  required
+                  value={editTanggal}
+                  onChange={(val) => setEditTanggal(val)}
+                />
+              </div>
 
               {findTransactionSource(db, editTarget.refId) === "session" && (
                 <>

@@ -134,22 +134,43 @@ export default function PerpustakaanTutor({
   }
 
   return (
-    <div id="perpustakaan-tutor-container" className="px-4 py-4 pb-20">
-      <div className="flex items-center gap-2 mb-5 border-b border-slate-100 pb-3">
-        <button
-          type="button"
-          onClick={onBack}
-          className="text-slate-400 hover:text-brand-600 transition-all p-1 hover:bg-slate-100 rounded-full cursor-pointer"
-        >
-          <ArrowLeft size={16} />
-        </button>
-        <div className="text-left">
-          <h2 className="text-xs font-extrabold text-brand-800 tracking-tight uppercase">
-            Perpustakaan
-          </h2>
-          <p className="text-[10px] text-brand-400">
-            Katalog, peminjaman, dan riwayat buku Anda
-          </p>
+    
+    <div id="perpustakaan-tutor-container" className="bg-brand-100/50 flex flex-col space-y-10">
+      <div id="library-hero" className="bg-gradient-to-br from-blue-500 to-brand-500 text-white p-6 rounded-b-[32px] shadow-lg mb-6 relative overflow-hidden">
+        <div className="absolute top-[-30px] right-[-30px] w-36 h-36 bg-white/5 rounded-full" />
+
+        {/* Header Tombol Kembali & Info Singkat */}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="p-2 bg-white/10 hover:bg-white/20 active:scale-95 rounded-full transition-all cursor-pointer backdrop-blur-sm border border-white/10 shrink-0"
+          >
+            <ArrowLeft size={18} className="text-white" />
+          </button> 
+          <div>
+            <h2 className="text-xs font-extrabold tracking-wider uppercase text-white font-display">
+              Selamat Datang
+            </h2>
+            <p className="text-lg text-white font-extrabold tracking-tight mt-0.5">
+              Di Perpustakaan Rumah Belajar
+            </p>
+          </div>
+        </div>
+
+        {/* Banner  di Tengah (Glassmorphism Box) */}
+        <div className="mt-4 bg-white/10 backdrop-blur-md p-4 rounded-2xl border border-white/10 shadow-inner flex items-center justify-between gap-3">
+          <div>
+              <div className="relative bg-brand-600 border border-brand-200 p-3 pt-5 rounded-lg shadow-3xs">
+                <div className="absolute -top-2 left-3 flex items-center gap-1 bg-amber-500 text-white px-2 py-0.5 rounded-lg text-[8.5px] font-extrabold uppercase tracking-wide">
+                  <Info size={10} />
+                  <span>Regulasi Peminjaman</span>
+                </div>
+                  <p className="text-[11px] font-medium text-white leading-relaxed">
+                  Setiap tutor bertindak sebagai penanggung jawab penuh atas buku dan bahan ajar yang dipinjam. Tutor diwajibkan untuk senantiasa merawat serta menjaga kondisi buku maupun bahan ajar tersebut dengan sebaik-baiknya. Setelah masa penggunaan atau peminjaman selesai, proses pengembalian wajib dikonfirmasikan secara langsung kepada Kak Septi.
+                  </p>
+              </div>
+          </div>       
         </div>
       </div>
 
@@ -176,8 +197,8 @@ export default function PerpustakaanTutor({
 
       {!loading && !loadError && (
         <>
-          <div className="relative mb-4">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-300" />
+          <div className="relative mb-4 px-4">
+            <Search size={15} className="absolute left-8 top-1/2 -translate-y-1/2 text-slate-300" />
             <input
               type="text"
               value={searchQuery}
@@ -187,55 +208,60 @@ export default function PerpustakaanTutor({
             />
           </div>
 
-          <div className="grid grid-cols-3 bg-white p-1 rounded-xl border border-slate-100 shadow-2xs mb-5">
+          <div className="grid grid-cols-3 bg-white p-1.5 rounded-xl border border-slate-200/60 mb-6 mx-4">
             <button
+              type="button"
               onClick={() => setSubTab("katalog")}
-              className={"py-2 text-[10.5px] font-bold rounded-lg cursor-pointer transition-all " + (subTab === "katalog" ? "bg-brand-600 text-white shadow-sm" : "text-slate-400")}
+              className={
+                "py-2 text-[10.5px] font-bold rounded-lg cursor-pointer transition-all " +
+                (subTab === "katalog"
+                  ? "bg-brand-600 text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700")
+              }
             >
               Katalog
             </button>
             <button
+              type="button"
               onClick={() => setSubTab("bukuSaya")}
-              className={"py-2 text-[10.5px] font-bold rounded-lg cursor-pointer transition-all " + (subTab === "bukuSaya" ? "bg-brand-600 text-white shadow-sm" : "text-slate-400")}
+              className={
+                "py-2 text-[10.5px] font-bold rounded-lg cursor-pointer transition-all flex items-center justify-center gap-1 " +
+                (subTab === "bukuSaya"
+                  ? "bg-brand-600 text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700")
+              }
             >
-              Buku Saya
+              <span>Buku Saya</span>
               {sedangDipinjam.length > 0 && (
-                <span className="ml-1 bg-white/25 rounded-full px-1.5">{sedangDipinjam.length}</span>
+                <span
+                  className={
+                    "text-[9.5px] px-1.5 py-0.5 rounded-full font-bold " +
+                    (subTab === "bukuSaya"
+                      ? "bg-white/20 text-white"
+                      : "bg-brand-100 text-brand-700")
+                  }
+                >
+                  {sedangDipinjam.length}
+                </span>
               )}
             </button>
             <button
+              type="button"
               onClick={() => setSubTab("riwayat")}
-              className={"py-2 text-[10.5px] font-bold rounded-lg cursor-pointer transition-all " + (subTab === "riwayat" ? "bg-brand-600 text-white shadow-sm" : "text-slate-400")}
+              className={
+                "py-2 text-[10.5px] font-bold rounded-lg cursor-pointer transition-all " +
+                (subTab === "riwayat"
+                  ? "bg-brand-600 text-white shadow-sm"
+                  : "text-slate-500 hover:text-slate-700")
+              }
             >
               Riwayat
             </button>
           </div>
 
           {subTab === "katalog" && (
-            <div className="space-y-5">
-              <div className="relative bg-brand-600 border border-brand-200 p-3 pt-5 rounded-lg shadow-3xs">
-                <div className="absolute -top-2 left-3 flex items-center gap-1 bg-amber-500 text-white px-2 py-0.5 rounded-lg text-[8.5px] font-extrabold uppercase tracking-wide">
-                  <Info size={10} />
-                  <span>Regulasi Peminjaman</span>
-                </div>
-                {regulasi.length === 0 ? (
-                  <p className="text-[11px] font-medium text-white leading-relaxed">
-                    Belum ada regulasi yang ditetapkan petugas Perpustakaan.
-                  </p>
-                ) : (
-                  <ul className="space-y-1.5">
-                    {regulasi
-                      .slice()
-                      .sort((a, b) => Number(a.urutan || 0) - Number(b.urutan || 0))
-                      .map((r, idx) => (
-                        <li key={idx} className="text-[11px] font-medium text-white leading-relaxed">
-                          <span className="font-bold">{r.judul}</span> {r.isi}
-                        </li>
-                      ))}
-                  </ul>
-                )}
-              </div>
-
+            
+            <div className="space-y-5 mb-10 px-4">
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="text-xs font-black text-blue-500 uppercase tracking-tight flex items-center gap-2">
@@ -254,7 +280,8 @@ export default function PerpustakaanTutor({
                     </p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3">
+                  /* Mengubah grid agar 2 kolom di mobile, 3-4 di tablet, dan 6 di desktop (lg) */
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
                     {displayedBooks.map((book) => (
                       <button
                         key={book.id_buku}
@@ -263,8 +290,9 @@ export default function PerpustakaanTutor({
                           setSubmitMsg(null);
                           setAgreeRegulasi(false);
                         }}
-                        className="bg-white rounded-2xl border border-blue-400 shadow-3xs overflow-hidden text-left flex flex-col cursor-pointer active:scale-95 transition-all"
+                        className="bg-white rounded-2xl border border-blue-400 shadow-3xs overflow-hidden text-left flex flex-col cursor-pointer hover:shadow-md hover:border-blue-500 active:scale-95 transition-all h-full"
                       >
+                        {/* Rasio cover disesuaikan ke aspect-[3/4] khas cover buku agar lebih proporsional */}
                         <div className="w-full aspect-[4/4] bg-slate-50 flex items-center justify-center overflow-hidden">
                           {book.cover_url ? (
                             <img
@@ -277,18 +305,27 @@ export default function PerpustakaanTutor({
                             <BookOpen size={26} className="text-slate-200" />
                           )}
                         </div>
-                        <div className="p-2.5">
-                          <p className="text-[11px] font-black text-slate-800 leading-tight line-clamp-2">
-                            {book.judul}
-                          </p>
-                          <p className="text-[9.5px] text-slate-400 font-medium mt-0.5 truncate">
-                            {book.penulis || "-"}
-                          </p>
-                          <span
-                            className={"inline-block mt-1.5 text-[8.5px] font-bold px-1.5 py-0.5 rounded-full " + (Number(book.stok_tersedia) > 0 ? "bg-emerald-50 text-emerald-600" : "bg-rose-50 text-rose-600")}
-                          >
-                            {Number(book.stok_tersedia) > 0 ? "Tersedia" : "Habis"}
-                          </span>
+                        <div className="p-2.5 flex flex-col justify-between flex-1">
+                          <div>
+                            <p className="text-[11px] font-black text-slate-800 leading-tight line-clamp-2">
+                              {book.judul}
+                            </p>
+                            <p className="text-[9.5px] text-slate-400 font-medium mt-0.5 truncate">
+                              {book.penulis || "-"}
+                            </p>
+                          </div>
+                          <div>
+                            <span
+                              className={
+                                "inline-block mt-1.5 text-[8.5px] font-bold px-1.5 py-0.5 rounded-full " +
+                                (Number(book.stok_tersedia) > 0
+                                  ? "bg-emerald-50 text-emerald-600"
+                                  : "bg-rose-50 text-rose-600")
+                              }
+                            >
+                              {Number(book.stok_tersedia) > 0 ? "Tersedia" : "Habis"}
+                            </span>
+                          </div>
                         </div>
                       </button>
                     ))}
@@ -299,7 +336,7 @@ export default function PerpustakaanTutor({
                   <button
                     type="button"
                     onClick={() => setShowAllBooks(true)}
-                    className="bg-brand-500 w-full mt-3 py-2.5 rounded-xl border border-slate-200 text-brand-200 text-[11px] font-bold hover:bg-brand-50 transition-colors"
+                    className="bg-brand-500 w-full mt-4 py-2.5 rounded-xl border border-slate-200 text-white text-[11px] font-bold hover:bg-brand-600 transition-colors cursor-pointer"
                   >
                     Lihat Semua Buku
                   </button>
@@ -309,7 +346,7 @@ export default function PerpustakaanTutor({
           )}
 
           {subTab === "bukuSaya" && (
-            <div className="space-y-2.5">
+            <div className="space-y-2.5 mb-10 px-4">
               {sedangDipinjam.length === 0 ? (
                 <div className="bg-brand-600 p-6 rounded-2xl border border-slate-100 shadow-3xs flex flex-col items-center justify-center text-center gap-2">
                   <Clock size={28} className="text-slate-50" />
@@ -321,36 +358,44 @@ export default function PerpustakaanTutor({
                 sedangDipinjam.map((loan) => (
                   <div
                     key={loan.id_peminjaman}
-                    className="bg-brand-600 p-6 rounded-2xl border border-slate-100 shadow-3xs space-y-2.5"
+                    className="bg-brand-600 p-6 rounded-2xl border border-slate-100 shadow-3xs space-y-2"
                   >
-                    <div>
-                      <p className="text-[12px] font-black text-slate-100">{loan.judul_buku}</p>
-                      <p className="text-[10px] text-slate-50 font-medium mt-1">
-                        Dipinjam:{" "}
-                        {loan.tanggal_pinjam
-                          ? new Date(loan.tanggal_pinjam).toLocaleDateString("id-ID")
-                          : "-"}{" "}
-                        &middot; Jatuh tempo:{" "}
-                        {loan.tanggal_jatuh_tempo
-                          ? new Date(loan.tanggal_jatuh_tempo).toLocaleDateString("id-ID")
-                          : "-"}
-                      </p>
+                    {/* Header Card: Judul di kiri, Tombol Kembalikan di kanan */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[12px] font-black text-slate-100 truncate">
+                          {loan.judul_buku}
+                        </p>
+                        <p className="text-[10px] text-slate-50 font-medium mt-0.5">
+                          Dipinjam:{" "}
+                          {loan.tanggal_pinjam
+                            ? new Date(loan.tanggal_pinjam).toLocaleDateString("id-ID")
+                            : "-"}{" "}
+                        </p>
+                        <p className="text-[10px] text-slate-50 font-medium mt-0.5">
+                          Jatuh tempo:{" "}
+                          {loan.tanggal_jatuh_tempo
+                            ? new Date(loan.tanggal_jatuh_tempo).toLocaleDateString("id-ID")
+                            : "-"}
+                        </p>
+                      </div>
+
+                      {/* Tombol Kembalikan (Ukuran Kecil Ringkas) */}
+                      <button
+                        type="button"
+                        onClick={() =>
+                          window.open(
+                            buildWaLink(
+                              `Halo Admin, saya ${tutorNama} ingin mengembalikan buku "${loan.judul_buku}" yang saya pinjam. Mohon dikonfirmasi pengembaliannya. Terima kasih.`
+                            ),
+                            "_blank"
+                          )
+                        }
+                        className="shrink-0 py-1 px-2.5 rounded-lg bg-brand-50 text-brand-700 text-[10px] font-bold hover:bg-brand-200 transition-colors flex items-center gap-1 shadow-2xs"
+                      >
+                        <span>Kembalikan</span>
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        window.open(
-                          buildWaLink(
-                            `Halo Admin, saya ${tutorNama} ingin mengembalikan buku "${loan.judul_buku}" yang saya pinjam. Mohon dikonfirmasi pengembaliannya. Terima kasih.`
-                          ),
-                          "_blank"
-                        )
-                      }
-                      className="w-full py-2 rounded-xl bg-emerald-50 text-emerald-700 text-[10.5px] font-bold hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1.5"
-                    >
-                      <MessageCircle size={13} />
-                      Kembalikan Buku
-                    </button>
                   </div>
                 ))
               )}
@@ -358,7 +403,7 @@ export default function PerpustakaanTutor({
           )}
 
           {subTab === "riwayat" && (
-            <div className="space-y-2.5">
+            <div className="space-y-2.5 mb-10 px-4">
               {myLoans.length === 0 ? (
                 <div className="bg-brand-600 p-6 rounded-2xl border border-slate-100 shadow-3xs flex flex-col items-center justify-center text-center gap-2">
                   <History size={28} className="text-slate-50" />

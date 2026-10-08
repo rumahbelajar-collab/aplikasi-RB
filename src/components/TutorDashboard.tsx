@@ -50,7 +50,14 @@ export default function TutorDashboard({
   onUpdateDb
 }: TutorDashboardProps) {
   const tutor = db.tutors.find(t => t.id === tutorId);
-  if (!tutor) return null;
+
+  // Tampilan tanggal dd/mm/yy (mis. 2026-10-08 -> 08/10/26)
+function formatTanggalDdMmYy(dateStr: string): string {
+  if (!dateStr) return "dd/mm/yy";
+  const [y, m, d] = dateStr.split("-");
+  if (!y || !m || !d) return dateStr;
+  return `${d}/${m}/${y.slice(-2)}`;
+}
 
   // Modals / Triggers State
   const [isLogFormOpen, setIsLogFormOpen] = useState(false);
@@ -64,6 +71,7 @@ export default function TutorDashboard({
   // Form states for adding session
   const [siswaId, setSiswaId] = useState("");
   const [programId, setProgramId] = useState("");
+  const [tanggalSesi, setTanggalSesi] = useState<string>(getTodayDateString());
   const [successMessage, setSuccessMessage] = useState("");
 
   // Form states for adding deposit (titipan)
@@ -99,9 +107,9 @@ export default function TutorDashboard({
       return;
     }
 
-    // Call core transaction
+    // Call core transaction (memakai tanggal yang dipilih tutor)
     const nextDb = addSessionTransaction(db, {
-      tanggal: getTodayDateString(), // Today's Context Date
+      tanggal: tanggalSesi || getTodayDateString(),
       siswaId,
       tutorId,
       programId,
@@ -111,9 +119,10 @@ export default function TutorDashboard({
     onUpdateDb(nextDb);
 
     // Show success banner
-    setSuccessMessage("Riwayat pertemuan mengajar hari ini berhasil disimpan!");
+    setSuccessMessage("Riwayat pertemuan mengajar berhasil disimpan!");
     setSiswaId("");
     setProgramId("");
+    setTanggalSesi(getTodayDateString());
     setIsLogFormOpen(false);
 
     setTimeout(() => {
@@ -153,6 +162,7 @@ export default function TutorDashboard({
   const handleQuickAddSessionFromSchedule = (sId: string, progId: string) => {
     setSiswaId(sId);
     setProgramId(progId);
+    setTanggalSesi(getTodayDateString());
     setIsLogFormOpen(true);
   };
 
@@ -167,10 +177,10 @@ export default function TutorDashboard({
 
   // Dynamic Today's Schedules específicos with times and student names
   const getTodaySchedule = () => {
-    const todayDateStr = getTodayDateString(); // Context local date is June 29, 2026
+    const todayDateStr = getTodayDateString();
     const indonesianDays = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
     const dayIndex = new Date(todayDateStr).getDay();
-    const currentDayIndo = indonesianDays[dayIndex]; // "Senin"
+    const currentDayIndo = indonesianDays[dayIndex];
     
     const tutorSchedules = (db.schedules || []).filter(
       s => s.tutorId === tutorId && s.hari === currentDayIndo
@@ -196,14 +206,8 @@ export default function TutorDashboard({
 
   const todaySchedules = getTodaySchedule();
 
-  const [tanggalSesi, setTanggalSesi] = useState<string>(getTodayDateString());
-
-  const handleOpenLogForm = () => {
-  setTanggalSesi(getTodayDateString()); // Reset ke tanggal hari ini
-  setIsLogFormOpen(true);
-};
-
-
+  // Pengecekan ini diletakkan SETELAH semua hooks (aturan hooks React)
+  if (!tutor) return null;
 
   return (
     <div id="tutor-dashboard-container" className="bg-brand-100/50 flex flex-col space-y-10">
@@ -245,7 +249,6 @@ export default function TutorDashboard({
         {/* Baris Bawah: Ikon dan Sampingnya Angka */}
         <div className="flex items-center gap-2 mt-1.5">
           <div className="w-6 h-6 bg-brand-50 text-brand-600 rounded-lg flex items-center justify-center shrink-0">
-            {/* Masukkan ikon Hari Ini / Kalender di sini */}
             <Calendar size={13} />
           </div>
           <p className="text-3xl font-black text-brand-600 leading-none">{todaySessionsCount}</p>
@@ -312,7 +315,7 @@ export default function TutorDashboard({
             </div>
           )}
 
-          {/* Kontainer Grid Utama: Otomatis melipat menjadi 3 kolom dan 2 baris (Total 6 menu) */}
+          {/* Kontainer Grid Utama: 3 kolom, 2 baris (Total 6 menu) */}
           <div className="grid grid-cols-3 gap-2.5">
             
             {/* 1. Tambah Pertemuan */}
@@ -321,6 +324,7 @@ export default function TutorDashboard({
                 onClick={() => {
                 setSiswaId("");
                 setProgramId("");
+                setTanggalSesi(getTodayDateString());
                 setIsLogFormOpen(true);
                 }}
                 className="bg-white p-3 rounded-2xl border border-slate-100 shadow-3xs flex flex-col items-center justify-center text-center min-h-[85px] group cursor-pointer transition-all active:scale-95 min-w-0"
@@ -455,18 +459,18 @@ export default function TutorDashboard({
             {todaySchedules.map((item, idx) => (
               <div 
                 key={idx} 
-                className="group relative bg-rose-500 hover:bg-white border border-slate-100 hover:border-brand-200 p-4 rounded-xl transition-all duration-300 flex items-center justify-between shadow-sm hover:shadow-md"
+                className="group relative bg-rose-500 hover:bg-blue-500 border border-slate-100 hover:border-brand-200 p-4 rounded-xl transition-all duration-300 flex items-center justify-between shadow-sm hover:shadow-md"
               >
                 {/* Info Utama */}
                 <div className="flex items-center gap-4">
                   {/* Status Bar Kecil */}
-                  <div className={`w-1.5 h-12 rounded-full ${item.status === "Selesai" ? "bg-brand-500" : "bg-amber-400"}`} />
+                  <div className={`w-1.5 h-12 rounded-full ${item.status === "Selesai" ? "bg-brand-700" : "bg-amber-400"}`} />
                   
                   <div className="space-y-0.5">
                     <p className="text-sm font-black text-white">{item.siswaNama}</p>
-                    <p className="text-[11px] text-slate-500 font-medium">{item.programNama}</p>
+                    <p className="text-[11px] text-slate-100 font-medium">{item.programNama}</p>
                     <div className="flex items-center gap-2 pt-1">
-                      <span className="text-[10px] font-bold text-slate-600 bg-slate-200/60 px-2 py-0.5 rounded-md">
+                      <span className="text-[10px] font-bold text-rose-600 bg-white px-2 py-0.5 rounded-md">
                         {item.waktu}
                       </span>
                       <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md ${item.status === "Selesai" ? "text-emerald-700 bg-emerald-50" : "text-amber-700 bg-amber-50"}`}>
@@ -557,7 +561,7 @@ export default function TutorDashboard({
             <div className="bg-brand-600 text-white p-4 flex justify-between items-center">
               <div className="flex items-center gap-2">
                 <PlusCircle size={18} />
-                <h3 className="font-extrabold text-sm tracking-tight">Catat Absensi Hari Ini</h3>
+                <h3 className="font-extrabold text-sm tracking-tight">Catat Absensi</h3>
               </div>
               <button
                 onClick={() => setIsLogFormOpen(false)}
@@ -567,80 +571,90 @@ export default function TutorDashboard({
               </button>
             </div>
 
-<form onSubmit={handleQuickSubmit} className="p-5 space-y-4">
-  {/* Custom Selectable Date */}
-  <div>
-    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
-      Tanggal Sesi *
-    </label>
-    <div className="relative flex items-center">
-      <input
-        type="date"
-        required
-        value={tanggalSesi}
-        onChange={(e) => setTanggalSesi(e.target.value)}
-        className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand-500 text-slate-700 cursor-pointer"
-      />
-    </div>
-  </div>
+            <form onSubmit={handleQuickSubmit} className="p-5 space-y-4">
+              {/* Custom Selectable Date */}
+              <div>
+                <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+                  Tanggal Sesi *
+                </label>
+            <div className="relative">
+              {/* Tampilan: dd/mm/yy */}
+              <div className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-sm text-slate-700 flex items-center justify-between pointer-events-none">
+                <span className="font-mono">{formatTanggalDdMmYy(tanggalSesi)}</span>
+                <Calendar size={14} className="text-slate-400" />
+              </div>
 
-  {/* Select Student */}
-  <div>
-    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
-      Pilih Siswa *
-    </label>
-    <select
-      required
-      value={siswaId}
-      onChange={handleStudentChange}
-      className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand-500 text-slate-700 cursor-pointer"
-    >
-      <option value="">-- Pilih Siswa --</option>
-      {activeStudents.map((s) => (
-        <option key={s.id} value={s.id}>
-          {s.nama} ({s.id})
-        </option>
-      ))}
-    </select>
-  </div>
+              {/* Input tanggal asli, transparan di atasnya agar kalender tetap bisa dibuka */}
+              <input
+                type="date"
+                required
+                value={tanggalSesi}
+                onChange={(e) => setTanggalSesi(e.target.value)}
+                onClick={(e) => {
+                  try { (e.currentTarget as HTMLInputElement).showPicker?.(); } catch {}
+                }}
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              />
+            </div>
+              </div>
 
-  {/* Select Daily Program */}
-  <div>
-    <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
-      Program Harian *
-    </label>
-    <select
-      required
-      value={programId}
-      onChange={(e) => setProgramId(e.target.value)}
-      className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand-500 text-slate-700 cursor-pointer"
-    >
-      <option value="">-- Pilih Program Harian --</option>
-      {activePrograms.map((p) => (
-        <option key={p.id} value={p.id}>
-          {p.nama}
-        </option>
-      ))}
-    </select>
-  </div>
+              {/* Select Student */}
+              <div>
+                <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+                  Pilih Siswa *
+                </label>
+                <select
+                  required
+                  value={siswaId}
+                  onChange={handleStudentChange}
+                  className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand-500 text-slate-700 cursor-pointer"
+                >
+                  <option value="">-- Pilih Siswa --</option>
+                  {activeStudents.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nama} ({s.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-  {/* Action Buttons */}
-  <div className="flex gap-2 pt-2.5 border-t border-slate-100">
-    <button
-      type="button"
-      onClick={() => setIsLogFormOpen(false)}
-      className="flex-1 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-500 font-bold text-xs rounded-xl cursor-pointer transition-colors"
-    >
-      Batal
-    </button>
-    <button
-      type="submit"
-      className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all active:scale-98"
-    >
-      Simpan Pertemuan
-    </button>
-  </div>
-</form>
+              {/* Select Daily Program */}
+              <div>
+                <label className="block text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-1">
+                  Program Harian *
+                </label>
+                <select
+                  required
+                  value={programId}
+                  onChange={(e) => setProgramId(e.target.value)}
+                  className="w-full text-xs font-semibold p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-brand-500 text-slate-700 cursor-pointer"
+                >
+                  <option value="">-- Pilih Program Harian --</option>
+                  {activePrograms.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.nama}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-2 pt-2.5 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsLogFormOpen(false)}
+                  className="flex-1 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-500 font-bold text-xs rounded-xl cursor-pointer transition-colors"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs rounded-xl shadow-md cursor-pointer transition-all active:scale-98"
+                >
+                  Simpan Pertemuan
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

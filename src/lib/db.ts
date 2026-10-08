@@ -828,7 +828,7 @@ export function addOtherIncomeTransaction(
  * Konteks penting untuk sesi (tarif siswa vs honor tutor)
  * dan slip honor (kotor vs bersih).
  */
-export type LedgerContext = "siswa" | "honor" | "kas";
+export type LedgerContext = "siswa" | "honor" | "kas" | "titipan";
 
 export type TransactionSourceKind =
   | "session"
@@ -874,18 +874,27 @@ export function describeTransactionDelete(
 }
 
 /**
- * Ubah nominal satu transaksi berdasarkan referensiId data sumber.
+ * Ubah nominal (dan tanggal, opsional) satu transaksi berdasarkan referensiId data sumber.
+ *
+ * - Pengeluaran operasional (expense) TIDAK bisa diedit.
+ * - Riwayat pertemuan didelegasikan ke updateSessionDetails.
+ * - context "titipan" = tombol edit di kartu Titipan (mengubah Tgl Titip pembayaran).
  */
 export function updateTransactionAmount(
   db: Database,
   referensiId: string,
   jumlahBaru: number,
-  context: LedgerContext
+  context: LedgerContext,
+  tanggalBaru?: string
 ): Database {
   const newAmount = amount(jumlahBaru);
 
   if (newAmount <= 0) {
     throw new Error("Nominal harus lebih dari 0.");
+  }
+
+  if (tanggalBaru && !/^\d{4}-\d{2}-\d{2}$/.test(tanggalBaru)) {
+    throw new Error("Format tanggal tidak valid.");
   }
 
   const kind = findTransactionSource(db, referensiId);
@@ -894,30 +903,49 @@ export function updateTransactionAmount(
     throw new Error("Data sumber transaksi tidak ditemukan.");
   }
 
+  if (kind === "expense") {
+    throw new Error(
+      "Pengeluaran operasional tidak dapat diedit. Hapus lalu catat ulang jika ada kesalahan."
+    );
+  }
+
+  if (kind === "session") {
+    const old = db.sessions.find((x) => x.id === referensiId)!;
+
+    return updateSessionDetails(db, referensiId, {
+      siswaId: old.siswaId,
+      programId: old.programId,
+      tanggal: tanggalBaru,
+      nominal: newAmount,
+      context
+    });
+  }
+
   const next = cloneDatabase(db);
   const now = new Date().toISOString();
 
-  if (kind === "session") {
-    const i = next.sessions.findIndex((x) => x.id === referensiId);
-    const s = next.sessions[i];
-
-    next.sessions[i] = {
-      ...s,
-      ...(context === "honor"
-        ? { honorTutorSnapshot: newAmount }
-        : { tarifSiswaSnapshot: newAmount }),
-      lastUpdated: now
-    } as any;
-  }
-
   if (kind === "payment") {
     const i = next.payments.findIndex((x) => x.id === referensiId);
+    const pay = next.payments[i];
 
-    next.payments[i] = {
-      ...next.payments[i],
-      jumlah: newAmount,
-      lastUpdated: now
-    } as any;
+    const patch: any = { jumlah: newAmount, lastUpdated: now };
+
+    if (tanggalBaru) {
+      if (context === "titipan") {
+        // Kartu titipan menampilkan "Tgl Titip"
+        patch.tanggal = tanggalBaru;
+      } else if (pay.metode === "admin") {
+        patch.tanggal = tanggalBaru;
+        patch.tanggalSerah = tanggalBaru;
+      } else if (pay.tanggalSerah) {
+        // Pembayaran via tutor yang sudah disetor: tanggal di ledger = tanggal setor
+        patch.tanggalSerah = tanggalBaru;
+      } else {
+        patch.tanggal = tanggalBaru;
+      }
+    }
+
+    next.payments[i] = { ...pay, ...patch } as any;
   }
 
   if (kind === "slip") {
@@ -939,6 +967,7 @@ export function updateTransactionAmount(
       ...slip,
       totalHonor: gross,
       jumlah: gross - potongan,
+      tanggal: tanggalBaru || slip.tanggal,
       lastUpdated: now
     } as any;
   }
@@ -950,16 +979,7 @@ export function updateTransactionAmount(
       ...next.otherIncomes[i],
       nominal: newAmount,
       jumlah: newAmount,
-      lastUpdated: now
-    } as any;
-  }
-
-  if (kind === "expense") {
-    const i = next.expenses.findIndex((x) => x.id === referensiId);
-
-    next.expenses[i] = {
-      ...next.expenses[i],
-      jumlah: newAmount,
+      tanggal: tanggalBaru || next.otherIncomes[i].tanggal,
       lastUpdated: now
     } as any;
   }
@@ -968,7 +988,7 @@ export function updateTransactionAmount(
 }
 
 /**
- * Edit detail riwayat pertemuan (absensi): siswa, program belajar, dan nominal.
+ * Edit detail riwayat pertemuan (absensi): tanggal, siswa, program belajar, dan nominal.
  *
  * - Jika program berubah, tarif siswa & honor tutor otomatis mengikuti
  *   program baru (snapshot diperbarui), lalu `nominal` (jika diisi)
@@ -983,6 +1003,7 @@ export function updateSessionDetails(
   data: {
     siswaId: string;
     programId: string;
+    tanggal?: string;
     nominal?: number;
     context: LedgerContext;
   }
@@ -997,6 +1018,8 @@ export function updateSessionDetails(
 
   const old = next.sessions[index];
 
+  const tanggalBaru = data.tanggal || old.tanggal;
+
   const student = next.students.find((s) => s.id === data.siswaId);
   const program = next.programs.find((p) => p.id === data.programId);
 
@@ -1008,7 +1031,7 @@ export function updateSessionDetails(
   const duplicate = next.sessions.some(
     (s) =>
       s.id !== sessionId &&
-      s.tanggal === old.tanggal &&
+      s.tanggal === tanggalBaru &&
       s.tutorId === old.tutorId &&
       s.siswaId === student.id &&
       s.programId === program.id
@@ -1055,6 +1078,7 @@ export function updateSessionDetails(
     r.programId === old.programId
       ? ({
           ...r,
+          tanggal: tanggalBaru,
           siswaId: student.id,
           siswaNama: student.nama,
           programId: program.id,
@@ -1066,6 +1090,7 @@ export function updateSessionDetails(
 
   next.sessions[index] = {
     ...old,
+    tanggal: tanggalBaru,
     siswaId: student.id,
     siswaNama: student.nama,
     programId: program.id,

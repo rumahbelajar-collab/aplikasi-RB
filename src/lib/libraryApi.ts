@@ -193,6 +193,53 @@ export function returnBook(payload: { id_peminjaman: string }) {
   return libraryPost("returnBook", payload);
 }
 
+/**
+ * Input peminjaman langsung oleh petugas: ajukan lalu setujui otomatis.
+ * Memakai submitLoan + approveLoan yang sudah ada, jadi backend tidak berubah.
+ */
+export async function createLoan(payload: {
+  user_id: string;
+  nama_user: string;
+  role_user: string;
+  id_buku: string;
+  judul_buku: string;
+  durasi_hari: number;
+  verified_by: string;
+  langsung_disetujui?: boolean;
+}) {
+  const submitted = await submitLoan({
+    user_id: payload.user_id,
+    nama_user: payload.nama_user,
+    role_user: payload.role_user,
+    id_buku: payload.id_buku,
+    judul_buku: payload.judul_buku,
+    catatan_user: "Diinput oleh petugas: " + payload.verified_by
+  });
+
+  // false = biarkan "menunggu" supaya tetap lewat menu Verifikasi
+  if (payload.langsung_disetujui === false) return submitted;
+
+  try {
+    await approveLoan({
+      id_peminjaman: submitted.id_peminjaman,
+      verified_by: payload.verified_by,
+      lama_pinjam_hari: payload.durasi_hari
+    });
+  } catch (error) {
+    // Hindari pengajuan "menunggu" yatim kalau persetujuan gagal
+    try {
+      await rejectLoan({
+        id_peminjaman: submitted.id_peminjaman,
+        verified_by: payload.verified_by,
+        catatan_admin: "Dibatalkan otomatis: persetujuan gagal"
+      });
+    } catch {}
+    throw error;
+  }
+
+  return submitted;
+}
+
 export function createBook(payload: Partial<BookItem>) {
   return libraryPost<{ success: true; id_buku: string }>(
     "createBook",

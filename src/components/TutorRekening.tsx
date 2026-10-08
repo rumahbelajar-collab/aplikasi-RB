@@ -15,6 +15,7 @@ import {
   findTransactionSource
 } from "../lib/db";
 import { downloadSlipGajiPDF } from "../lib/pdfGenerator";
+import CustomDatePicker from "./CustomDatePicker";
 
 interface TutorRekeningProps {
   db: Database;
@@ -47,11 +48,16 @@ export default function TutorRekening({ db, tutorId, onUpdateDb }: TutorRekening
   // Edit state
   const [editTarget, setEditTarget] = useState<EditTarget | null>(null);
   const [editJumlah, setEditJumlah] = useState(0);
+  const [editTanggal, setEditTanggal] = useState("");
   const [editSiswaId, setEditSiswaId] = useState("");
   const [editProgramId, setEditProgramId] = useState("");
 
   // Terapkan hasil perubahan lewat parent
   const applyDb = (nextDb: Database) => {
+    if (typeof onUpdateDb !== "function") {
+      alert("Perubahan belum bisa disimpan: parent belum mengirim prop onUpdateDb ke <TutorRekening />. Salin nilai onUpdateDb dari <AdminKeuangan /> di file parent.");
+      return;
+    }
     onUpdateDb(nextDb);
   };
 
@@ -72,9 +78,11 @@ export default function TutorRekening({ db, tutorId, onUpdateDb }: TutorRekening
 
     const session = db.sessions.find(s => s.id === refId);
     if (session) {
+      setEditTanggal(session.tanggal);
       setEditSiswaId(session.siswaId);
       setEditProgramId(session.programId);
     } else {
+      setEditTanggal("");
       setEditSiswaId("");
       setEditProgramId("");
     }
@@ -107,6 +115,7 @@ export default function TutorRekening({ db, tutorId, onUpdateDb }: TutorRekening
       const isSession = findTransactionSource(db, editTarget.refId) === "session";
       const nextDb = isSession
         ? updateSessionDetails(db, editTarget.refId, {
+            tanggal: editTanggal,
             siswaId: editSiswaId,
             programId: editProgramId,
             nominal: Number(editJumlah),
@@ -292,6 +301,15 @@ export default function TutorRekening({ db, tutorId, onUpdateDb }: TutorRekening
 
               {findTransactionSource(db, editTarget.refId) === "session" && (
                 <>
+                  <div>
+                    <label className="block text-[10.5px] text-slate-400 font-bold uppercase tracking-wider mb-1">Tanggal Sesi *</label>
+                    <CustomDatePicker
+                      required
+                      value={editTanggal}
+                      onChange={(val) => setEditTanggal(val)}
+                    />
+                  </div>
+
                   <div>
                     <label className="block text-[10.5px] text-slate-400 font-bold uppercase tracking-wider mb-1">Nama Siswa *</label>
                     <select
